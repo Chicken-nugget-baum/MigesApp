@@ -1,0 +1,63 @@
+@font-face {
+  font-family: 'Nunito';
+  src: url('../vendor/nunito-latin-400-normal.woff2') format('woff2');
+  font-weight: 400; font-display: swap;
+}
+@font-face {
+  font-family: 'Nunito';
+  src: url('../vendor/nunito-latin-700-normal.woff2') format('woff2');
+  font-weight: 700; font-display: swap;
+}
+@font-face {
+  font-family: 'Nunito';
+  src: url('../vendor/nunito-latin-800-normal.woff2') format('woff2');
+  font-weight: 800; font-display: swap;
+}
+:root {
+  --ink: #2a2030;
+  --paper: #fff6dc;
+  --accent: #c0392b;
+  --pill: rgba(46, 38, 60, 0.72);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #bfe6ff; color: var(--paper); font-family: 'Nunito', 'Segoe UI', sans-serif; }
+canvas { position: fixed; inset: 0; display: block; }
+canvas#gl { touch-action: none; cursor: grab; }
+canvas#gl:active { cursor: grabbing; }
+canvas#ui { pointer-events: none; }
+
+#hud { position: fixed; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
+#hud .buttons { display: flex; gap: 6px; }
+.pill {
+  pointer-events: auto; background: var(--pill); color: var(--paper); border: 2px solid rgba(255, 246, 220, 0.25);
+  border-radius: 999px; padding: 6px 12px; font: 700 16px 'Nunito', 'Segoe UI', sans-serif; line-height: 1.1;
+}
+button.pill { cursor: pointer; min-width: 38px; }
+button.pill:hover { background: rgba(60, 48, 80, 0.9); }
+#clock { font-size: 18px; }
+
+#intro {
+  position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;
+  background: radial-gradient(ellipse at center, rgba(60, 80, 110, 0.35), rgba(30, 40, 70, 0.7));
+  transition: opacity 0.5s;
+}
+#intro.gone { opacity: 0; pointer-events: none; }
+#intro .card {
+  max-width: 440px; text-align: center; background: var(--paper); color: var(--ink);
+  border: 0; border-radius: 22px; padding: 22px 22px 26px; box-shadow: 0 18px 50px rgba(30, 20, 50, 0.35);
+}
+#intro h1 { margin: 0 0 6px; font-size: 44px; font-weight: 800; color: var(--accent); letter-spacing: 1px; }
+#intro p { margin: 6px 0; font-size: 18px; }
+#intro .hint { font-size: 14px; opacity: 0.8; line-height: 1.45; }
+#enter {
+  margin-top: 14px; font: 700 22px 'Nunito', 'Segoe UI', sans-serif; color: var(--paper); background: var(--accent);
+  border: 0; border-radius: 999px; padding: 10px 32px; cursor: pointer; box-shadow: 0 4px 0 #8a2a20;
+}
+#intro .credit { margin-top: 14px; font-size: 12px; opacity: 0.6; }
+#intro .credit a { color: inherit; }
+#enter:active { transform: translateY(3px); box-shadow: 0 1px 0 #8a2a20; }
+
+#error {
+  position: fixed; left: 8px; right: 8px; bottom: 8px; max-height: 40vh; overflow: auto; margin: 0;
+  background: #3a0d0d; color: #ffd0d0; border: 2px solid #ff6b6b; border-radius: 6px; padding: 8px; font: 12px monospace; white-space: pre-wrap;
+}

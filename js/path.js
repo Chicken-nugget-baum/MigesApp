@@ -33,7 +33,7 @@
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
   NB.findPath = function (cost, w, h, sx, sy, tx, ty, maxExpand) {
-    maxExpand = maxExpand || 12000;
+    maxExpand = maxExpand || 60000;
     if (sx === tx && sy === ty) return [];
     const t = ty * w + tx, s = sy * w + sx;
     if (tx < 0 || ty < 0 || tx >= w || ty >= h || !cost[t]) return null;

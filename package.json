@@ -1,0 +1,35 @@
+{
+  "name": "nesselnbach",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "vendor": "node scripts/vendor.mjs",
+    "check": "node scripts/check.mjs",
+    "start": "node scripts/serve.mjs",
+    "shot": "node scripts/shot.mjs",
+    "postinstall": "node scripts/vendor.mjs",
+    "osm": "node scripts/osm.mjs 47.371 8.278 47.399 8.312",
+    "scene": "node scripts/build-scene.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chicken-nugget-baum/migesApp.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Chicken-nugget-baum/migesApp/issues"
+  },
+  "homepage": "https://github.com/Chicken-nugget-baum/migesApp#readme",
+  "dependencies": {
+    "@fontsource/nunito": "^5.3.0",
+    "three": "^0.187.0",
+    "zzfx": "^1.4.0"
+  },
+  "private": true,
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

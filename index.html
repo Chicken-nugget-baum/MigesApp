@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Nesselnbach</title>
+  <meta name="description" content="Es läbigs 3D-Dorf: Nesselnbach im Reusstal.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <canvas id="ui"></canvas>
+
+  <div id="hud">
+    <div id="clock" class="pill">--:--</div>
+    <div class="buttons">
+      <button id="zoomin" class="pill" title="Inezoome">＋</button>
+      <button id="zoomout" class="pill" title="Usezoome">－</button>
+      <button id="findcat" class="pill" title="Wo isch Luna?">🐱</button>
+      <button id="centre" class="pill" title="Zur Bushaltestell">⌂</button>
+      <button id="mute" class="pill" title="Ton">🔊</button>
+    </div>
+  </div>
+
+  <div id="intro">
+    <div class="card">
+      <h1>Nesselnbach</h1>
+      <p>Niederwilerstrooss, Ifangweg und de Kapälleweg – und alles läbt.</p>
+      <p class="hint">Chlick uf d'Lüüt, d'Chatze, d'Hüüser, s'Postauto…<br>Ziehe zum Verschiebe, rächti Maustaste zum Dräie, Mausrad zum Zoome.<br>Lang uf e Chatz drücke = schnurre. Luna antippe = Zoomies!</p>
+      <button id="enter">Iitrete</button>
+      <p class="credit">Charte-Date © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-Mitwirkendi</p>
+    </div>
+  </div>
+
+  <!-- libraries (built from npm by scripts/vendor.mjs) -->
+  <script src="vendor/three.js"></script>
+  <script src="vendor/zzfx.js"></script>
+  <!-- game (order matters) -->
+  <script src="js/util.js"></script>
+  <script src="js/path.js"></script>
+  <script src="js/data/scene.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/models.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/env.js"></script>
+  <script src="js/entities.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/data/characters.js"></script>
+  <script src="js/data/animals.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
