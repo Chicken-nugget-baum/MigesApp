@@ -19,7 +19,7 @@
     if (o.quiet && U.bubbles.length > 6) return;
     U.bubbles.push({ owner, text, t: 0, life: o.life || NB.clamp(1.8 + text.length * 0.07, 2.5, 6) });
   };
-  // kind: heart | note | dust
+  // kind: heart | note | dust | ripple | fish | angry
   U.fx = function (x, y, z, kind, o) {
     o = o || {};
     U.fxs.push({ x, y, z, kind, vy: o.vy || 0.8, life: o.life || 1.2, t: 0, wob: Math.random() * 6 });
@@ -75,9 +75,26 @@
       const a = NB.clamp(1 - f.t / f.life, 0, 1);
       ctx.globalAlpha = a;
       if (f.kind === 'dust') { ctx.fillStyle = '#f3e6cc'; ctx.beginPath(); ctx.arc(p[0], p[1], 4 + f.t * 10, 0, Math.PI * 2); ctx.fill(); }
+      else if (f.kind === 'ripple') { // expanding ring on the water
+        const rx = (2 + f.t * 9) * NB.view.zoom; ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.ellipse(p[0], p[1], rx, rx / 2, 0, 0, Math.PI * 2); ctx.stroke();
+      } else if (f.kind === 'fish' || f.kind === 'angry') { ctx.font = '22px ' + FONT; ctx.fillText(f.kind === 'fish' ? '🐟' : '💢', p[0], p[1]); }
       else { ctx.font = '20px ' + FONT; ctx.fillStyle = f.kind === 'heart' ? '#ff4f7a' : '#fff6c0'; ctx.fillText(f.kind === 'heart' ? '❤' : '♪', p[0], p[1]); }
     }
     ctx.globalAlpha = 1;
+    // fishing rods: from the hand to a tip over the water, line down to a bobbing float
+    const now = performance.now() / 1000;
+    for (const e of NB.Entities.list) {
+      const f = e.fishing;
+      if (!f || e.inside) continue;
+      const hand = toScreen(e.x, 1.2, e.z), bobY = 0.05 + Math.sin(now * 2.5 + e.x) * 0.05 - (f.bite > 0 ? 0.25 : 0);
+      const fl = toScreen(f.bx, bobY, f.bz);
+      const tip = [hand[0] + (fl[0] - hand[0]) * 0.5, hand[1] + (fl[1] - hand[1]) * 0.5 - 12 * v.zoom];
+      ctx.lineWidth = Math.max(1.5, v.zoom * 0.8); ctx.strokeStyle = '#5a3d22'; ctx.beginPath(); ctx.moveTo(hand[0], hand[1]); ctx.lineTo(tip[0], tip[1]); ctx.stroke();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.beginPath(); ctx.moveTo(tip[0], tip[1]); ctx.lineTo(fl[0], fl[1]); ctx.stroke();
+      ctx.fillStyle = '#e8463a'; ctx.beginPath(); ctx.arc(fl[0], fl[1], Math.max(2, v.zoom), 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(fl[0], fl[1] - Math.max(1, v.zoom * 0.6), Math.max(1, v.zoom * 0.6), 0, Math.PI * 2); ctx.fill();
+    }
     // hover name
     const h = U.hover;
     if (h && !U.bubbles.some((b) => b.owner === h.owner)) {

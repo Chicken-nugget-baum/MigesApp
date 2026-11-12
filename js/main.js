@@ -110,7 +110,7 @@
   // ---------- trees, bushes ----------
   const rnd = NB.seeded(77);
   const occupied = [];
-  const freeSpot = (x, z, streetGap, bGap, gap) => map.streetDist(x, z) > streetGap && !map.inBuilding(x, z, bGap) && !occupied.some(([ox, oz]) => Math.hypot(ox - x, oz - z) < gap);
+  const freeSpot = (x, z, streetGap, bGap, gap) => map.streetDist(x, z) > streetGap && !map.inBuilding(x, z, bGap) && !map.fieldAt(x, z) && map.pondDist(x, z) > 4 && !occupied.some(([ox, oz]) => Math.hypot(ox - x, oz - z) < gap);
   for (let k = 0; k < 1200 && occupied.length < 280; k++) {
     const x = NB.lerp(bx0 + 10, bx1 - 10, rnd()), z = NB.lerp(bz0 + 10, bz1 - 10, rnd());
     if (!freeSpot(x, z, 3.5, 3, 6)) continue;
@@ -175,8 +175,26 @@
   const TM = 2, MARGIN = 240;
   const tx0 = bx0 - MARGIN, tz0 = bz0 - MARGIN;
   const tw = Math.ceil((bx1 - bx0 + MARGIN * 2) * TM), th = Math.ceil((bz1 - bz0 + MARGIN * 2) * TM);
-  const terrain = new Uint8Array(tw * th); // 0 grass, 1 sidewalk, 2 asphalt, 3 plaza
+  const terrain = new Uint8Array(tw * th); // 0 grass, 1 sidewalk, 2 asphalt, 3 plaza, 4 grain field, 5 meadow, 6 root crops, 7 water, 8 shore
+  const fang = new Uint8Array(tw * th);    // furrow direction of field cells (angle bucket 0..100 = 0..180 deg)
+  const CROP = { grain: 4, meadow: 5, root: 6 };
   {
+    // fields on their own transparent canvas: alpha tells us coverage, so antialiased edges don't mix kinds
+    const [fc, fg] = NB.canvas(tw, th);
+    for (const f of map.fields) {
+      const bucket = Math.round((((f.angle % Math.PI) + Math.PI) % Math.PI) / Math.PI * 100);
+      fg.fillStyle = `rgb(${bucket},${(CROP[f.kind] || 4) * 30},0)`; fg.beginPath();
+      f.pts.forEach(([x, z], k) => (k ? fg.lineTo((x - tx0) * TM, (z - tz0) * TM) : fg.moveTo((x - tx0) * TM, (z - tz0) * TM)));
+      fg.closePath(); fg.fill();
+    }
+    for (const w of map.water) { // pond: a 2.5 m shore band (code 8) around the water (code 7)
+      fg.beginPath();
+      w.pts.forEach(([x, z], k) => (k ? fg.lineTo((x - tx0) * TM, (z - tz0) * TM) : fg.moveTo((x - tx0) * TM, (z - tz0) * TM)));
+      fg.closePath();
+      fg.lineWidth = 2.5 * TM; fg.lineJoin = 'round'; fg.strokeStyle = 'rgb(0,240,0)'; fg.stroke();
+      fg.fillStyle = 'rgb(0,210,0)'; fg.fill();
+    }
+    const fd = fg.getImageData(0, 0, tw, th).data;
     const [tc, tg] = NB.canvas(tw, th);
     tg.fillStyle = '#000'; tg.fillRect(0, 0, tw, th);
     if (S.pois && S.pois.dorfplatz) { const r = S.pois.dorfplatz; tg.fillStyle = '#0000ff'; tg.fillRect((r[0] - tx0) * TM, (r[1] - tz0) * TM, (r[2] - r[0]) * TM, (r[3] - r[1]) * TM); }
@@ -189,16 +207,42 @@
     for (const s of S.streets) stroke(s, s.width + 2.4, '#ff0000');
     for (const s of S.streets) stroke(s, s.width, '#00ff00');
     const d = tg.getImageData(0, 0, tw, th).data;
-    for (let i = 0; i < terrain.length; i++) terrain[i] = d[i * 4 + 1] > 127 ? 2 : d[i * 4] > 127 ? 1 : d[i * 4 + 2] > 127 ? 3 : 0;
+    for (let i = 0; i < terrain.length; i++) {
+      let c = d[i * 4 + 1] > 127 ? 2 : d[i * 4] > 127 ? 1 : d[i * 4 + 2] > 127 ? 3 : 0;
+      if (!c && fd[i * 4 + 3] > 127) { c = NB.clamp(Math.round(fd[i * 4 + 1] / 30), 4, 8); fang[i] = fd[i * 4]; }
+      terrain[i] = c;
+    }
+    // a grass border around the pond: no crops within 7 m of the water
+    for (const w of map.water) {
+      const [ix0, iz0, ix1, iz1] = [(w.bbox[0] - 9 - tx0) * TM, (w.bbox[1] - 9 - tz0) * TM, (w.bbox[2] + 9 - tx0) * TM, (w.bbox[3] + 9 - tz0) * TM].map((v) => NB.clamp(Math.floor(v), 0, Math.max(tw, th)));
+      for (let iz = iz0; iz < Math.min(iz1, th); iz++) for (let ix = ix0; ix < Math.min(ix1, tw); ix++) {
+        const i = iz * tw + ix;
+        if (terrain[i] >= 4 && terrain[i] <= 6 && map.pondDist(tx0 + (ix + 0.5) / TM, tz0 + (iz + 0.5) / TM) < 7) terrain[i] = 0;
+      }
+    }
   }
-  const ter = (x, z) => {
+  const tidx = (x, z) => {
     const ix = ((x - tx0) * TM) | 0, iz = ((z - tz0) * TM) | 0;
-    return ix < 0 || iz < 0 || ix >= tw || iz >= th ? 0 : terrain[iz * tw + ix];
+    return ix < 0 || iz < 0 || ix >= tw || iz >= th ? -1 : iz * tw + ix;
   };
+  const ter = (x, z) => { const i = tidx(x, z); return i < 0 ? 0 : terrain[i]; };
+  const soft = (c) => c === 0 || c >= 4; // unpaved ground (grass or fields)
   const snow = NB.season === 'winter';
   const GRASS = { spring: ['#86d79a', '#74c788', '#98e2aa'], summer: ['#7dcf8e', '#6cbf7d', '#8fdb9e'], autumn: ['#a8cf84', '#95bd73', '#b9db96'], winter: ['#eef3f8', '#dfe8f0', '#ffffff'] }[NB.season] || ['#7dcf8e', '#6cbf7d', '#8fdb9e'];
   const FLOWERS = { spring: ['#ffffff', '#ffe066', '#ff9ecf', '#b9a4ff'], summer: ['#ffffff', '#ffd23f', '#ff7aa8', '#ffffff'] }[NB.season];
   const ASPH = snow ? '#c9c6d2' : '#9b97a8', WALK = snow ? '#f4f1ec' : '#e6dbc5', PLAZA = snow ? '#e8e6e2' : '#b7afa4';
+  // fields by season: [ground, furrow / stripe, speckle]
+  const FIELD = {
+    4: { spring: ['#8d6a45', '#7a5a3a', '#9a7650'], summer: ['#e3c35e', '#c9a53f', '#f0d47a'], autumn: ['#d9c99a', '#a98a5c', '#e6d8ad'], winter: ['#eef2f7', '#d3dae6', '#f8fafc'] },
+    5: { spring: ['#8fd48f', '#82c882', '#a3df9f'], summer: ['#a9cf6c', '#9bc25e', '#bcd97e'], autumn: ['#a4bd6f', '#95ae62', '#b5cc82'], winter: ['#eef3f8', '#e2eaf1', '#ffffff'] },
+    6: { spring: ['#8a5e3c', '#6f4a2e', '#9a6c46'], summer: ['#7fb85a', '#6f4a2e', '#8fc86a'], autumn: ['#7a5236', '#5f3f28', '#8a5e3c'], winter: ['#e9ecf1', '#c9c2bb', '#f5f7fa'] },
+  };
+  const FCOL = {}; for (const k in FIELD) FCOL[k] = (FIELD[k][NB.season] || FIELD[k].summer).map(I.rgb);
+  const FROW = []; for (let b = 0; b <= 100; b++) { const a = (b / 100) * Math.PI; FROW.push([-Math.sin(a), Math.cos(a)]); } // furrow normal per angle bucket
+  const FEDGE = I.rgb(snow ? '#d8d4cc' : '#b08a5a'); // dirt strip along the field edge
+  const SPROUT = I.rgb('#86c86e'); // young grain in spring
+  const WATER = (snow ? ['#9fc0d8', '#8ab0cc', '#c8dcea', '#7a9fbd'] : ['#4f9fd1', '#4590c2', '#9fd0ee', '#3b7fb0']).map(I.rgb); // base, dark, glint, edge
+  const SHORE = (snow ? ['#e8e4da', '#d8d2c4'] : ['#d6c69a', '#c2ae7e']).map(I.rgb);
   const COL = {
     g: GRASS.map(I.rgb), f: (FLOWERS || []).map(I.rgb),
     a: [ASPH, NB.shade(ASPH, 0.92), NB.shade(ASPH, 1.08), NB.shade(ASPH, 0.72)].map(I.rgb),
@@ -218,17 +262,36 @@
       let [x, z] = I.pxToWorld(cx * CH + 0.5, wy + 0.5);
       for (let px = 0; px < CH; px++, x += dxdx, z += dzdx, k += 4) {
         const wx = cx * CH + px;
-        const code = ter(x, z);
+        const ti = tidx(x, z), code = ti < 0 ? 0 : terrain[ti];
         const h = hash(wx, wy), r = h & 255;
         let c;
-        if (code === 0) {
+        if (code === 7) { // water: dark edge against the shore, a few glints
+          const edge = ter(x + dxdx, z + dzdx) !== 7 || ter(x - dxdx, z - dzdx) !== 7 || ter(x + dxdy, z + dzdy) !== 7 || ter(x - dxdy, z - dzdy) !== 7;
+          c = edge ? WATER[3] : (wx * 2 + wy * 5 + ((h >> 4) & 7)) % 31 < 2 && r < 90 ? WATER[2] : r < 7 ? WATER[1] : WATER[0];
+        } else if (code === 8) { // sandy shore with pebbles
+          c = r < 36 ? SHORE[1] : SHORE[0];
+        } else if (code >= 4) {
+          const pal = FCOL[code], n = FROW[fang[ti]], v = x * n[0] + z * n[1];
+          const edge = ter(x + dxdx, z + dzdx) === 0 || ter(x - dxdx, z - dzdx) === 0 || ter(x + dxdy, z + dzdy) === 0 || ter(x - dxdy, z - dzdy) === 0;
+          if (edge) c = r < 40 ? pal[1] : FEDGE;
+          else if (code === 5) { // meadow: wide mown stripes, a few flowers in spring/summer
+            const band = ((Math.floor(v / 4) % 2) + 2) % 2 === 0;
+            c = r < 5 ? pal[2] : band ? pal[0] : pal[1];
+            if (COL.f.length && ((h >> 8) & 255) < 1) c = COL.f[(h >> 16) & 3];
+          } else { // crops: furrows 1 m apart along the field's long axis
+            const f = v - Math.floor(v);
+            c = f < 0.42 ? pal[1] : r < 22 ? pal[2] : pal[0];
+            if (code === 4 && !snow && NB.season === 'spring' && f >= 0.46 && f < 0.58 && r > 30) c = SPROUT;
+            if (code === 6 && NB.season === 'summer' && f >= 0.55 && f < 0.9) c = r < 40 ? pal[2] : pal[0];
+          }
+        } else if (code === 0) {
           c = r < 16 ? COL.g[1] : r < 26 ? COL.g[2] : COL.g[0];
           if (COL.f.length && ((h >> 8) & 255) < 2) c = COL.f[(h >> 16) & 3];
         } else if (code === 2) {
           const edge = ter(x + dxdx, z + dzdx) !== 2 || ter(x - dxdx, z - dzdx) !== 2 || ter(x + dxdy, z + dzdy) !== 2 || ter(x - dxdy, z - dzdy) !== 2;
           c = edge ? COL.a[3] : r < 18 ? COL.a[1] : r < 30 ? COL.a[2] : COL.a[0];
         } else if (code === 1) {
-          const edge = ter(x + dxdx, z + dzdx) === 0 || ter(x - dxdx, z - dzdx) === 0 || ter(x + dxdy, z + dzdy) === 0 || ter(x - dxdy, z - dzdy) === 0;
+          const edge = soft(ter(x + dxdx, z + dzdx)) || soft(ter(x - dxdx, z - dzdx)) || soft(ter(x + dxdy, z + dzdy)) || soft(ter(x - dxdy, z - dzdy));
           c = edge ? COL.s[3] : r < 14 ? COL.s[1] : r < 24 ? COL.s[2] : COL.s[0];
         } else {
           const row = Math.floor(wy / 3), line = wy % 3 === 0 || (wx + row * 3) % 6 === 0;
@@ -254,6 +317,47 @@
       c.seen = frameNo;
     }
     if (chunks.size > 70) for (const [key, c] of chunks) if (c.seen < frameNo - 60) { ground.removeChild(c.sprite); c.sprite.texture.destroy(true); chunks.delete(key); }
+  }
+
+  // ---------- hay bales on the meadows (summer / autumn) ----------
+  if (NB.season === 'summer' || NB.season === 'autumn') {
+    const brnd = NB.seeded(1312), bales = [];
+    for (const f of map.fields) {
+      if (f.kind !== 'meadow') continue;
+      const [fx0, fz0, fx1, fz1] = [Math.max(f.bbox[0], bx0), Math.max(f.bbox[1], bz0), Math.min(f.bbox[2], bx1), Math.min(f.bbox[3], bz1)];
+      if (fx1 - fx0 < 20 || fz1 - fz0 < 20) continue;
+      for (let k = 0, n = 0; k < 120 && n < 7; k++) {
+        const x = NB.lerp(fx0, fx1, brnd()), z = NB.lerp(fz0, fz1, brnd());
+        if (ter(x, z) !== 5 || map.inBuilding(x, z, 3) || map.streetDist(x, z) < 3 || bales.some(([ox, oz]) => Math.hypot(ox - x, oz - z) < 9)) continue;
+        const rec = M.bale((brnd() * 4) | 0);
+        pickables.push({ sprite: placeStatic(rec, x, 0, z, zkey(x, z)), rec, info: { name: 'Heuballe', lines: ['Frisch gheuet. Schmöckt nach Summer!', 'Nid druf ufe chlettere!'], sound: 'click', top: { x, y: 1.6, z } } });
+        bales.push([x, z]); n++;
+      }
+    }
+    NB.world.bales = bales;
+  }
+
+  // ---------- Löli-Weiher: reeds along the shore, the owner's sign at the fishing spot ----------
+  if (map.water.length) {
+    const prnd = NB.seeded(2024), reeds = [];
+    for (const w of map.water) {
+      const [wx0, wz0, wx1, wz1] = w.bbox;
+      for (let k = 0, n = 0; k < 1500 && n < 36; k++) {
+        const x = NB.lerp(wx0 - 4, wx1 + 4, prnd()), z = NB.lerp(wz0 - 4, wz1 + 4, prnd());
+        const pd = map.pondDist(x, z);
+        if (pd < 0.2 || pd > 2.3 || map.inBuilding(x, z, 1) || reeds.some(([ox, oz]) => Math.hypot(ox - x, oz - z) < 3)) continue;
+        if (map.fishing && Math.hypot(x - map.fishing.x, z - map.fishing.z) < 5) continue; // keep the fishing spot clear
+        placeStatic(M.reed((prnd() * 6) | 0), x, 0, z, zkey(x, z));
+        reeds.push([x, z]); n++;
+      }
+    }
+    const f = map.fishing;
+    if (f) {
+      let tx = f.x - f.cx, tz = f.z - f.cz; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l; // outward normal
+      const x = f.x - tz * 4.5 + tx * 0.5, z = f.z + tx * 4.5 + tz * 0.5;
+      const rec = M.sign();
+      pickables.push({ sprite: placeStatic(rec, x, 0, z, zkey(x, z)), rec, info: { name: 'Löli-Weiher', lines: ['PRIVAT – Fische verbotte! (de Weiher-Buur)', "Do hets Egli und Rotfädere… säge d'Lüüt.", 'De Joel und d\'Mariana fische do trotzdem. Psst!'], sound: 'click', top: { x, y: 1.9, z } } });
+    }
   }
 
   // ---------- weather particles (screen space) ----------

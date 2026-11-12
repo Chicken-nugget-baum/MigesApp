@@ -4,6 +4,15 @@
 // Old 2D names (reuss, wald, gartebahn, niederwil, ...) still work as aliases, see js/world.js.
 window.NB = window.NB || {};
 NB.Data = NB.Data || {};
+// Visitors who come by car: members (character ids), the car, and the windows the arrival / departure time is
+// drawn from each day. Joel + Mariana from Lenzburg in their electric Mini, parked at Mige's (map.farmProps.parking).
+NB.Data.visitors = [
+  {
+    members: ['joel', 'mariana'],
+    car: { color: '#1f5c3a', name: 'Mini (elektrisch)', lines: ['Summ… (elektrisch, ganz liislig)', 'LB-Kennzeiche: Lenzburg–Nesselnbach und zrugg.', 'Lädt bi de Mige am Hof. 🔌', 'Joel und Mariana ihre Mini Cooper.'] },
+    arrive: ['10:30', '13:00'], leave: ['20:00', '22:00'],
+  },
+];
 NB.Data.characters = [
   // ---------------- family ----------------
   // Mige: pink long hair, black shirt, jeans. Lives in the Buurehuus (Niederwilerstrasse 3) with Mina and Luna.
@@ -77,26 +86,59 @@ NB.Data.characters = [
     random: ['Im Wald hets hüt Pilz.', 'Wer chunnt mit is Casino?'],
     night: ['Nur no eis Bierli…'],
   },
-  // Joel: brown short hair, black glasses, white pullover, dark jeans. Lives in the Buurehuus too.
+  // Joel: brown short hair, black glasses, white pullover, dark jeans. Lives in Lenzburg with Mariana; the two
+  // visit regularly by electric Mini (NB.Data.visitors below) and park at Mige's (`home` = their base while here).
   {
-    id: 'joel', name: 'Joel', home: 'buurehuus', cycle: true,
+    id: 'joel', name: 'Joel', home: 'buurehuus', visitor: true, cycle: true,
     look: { skin: '#eec1a0', hair: '#6b4226', hairStyle: 'short', glasses: true, shirt: '#f4f3ee', pants: '#26324a', shoes: '#2a2a2a' },
     voice: 0.85, favorites: ['sitzplatz', 'hof', 'beiz'],
-    routine: [{ at: '08:00', go: 'home:buurehuus' }, { at: '12:15', go: 'sitzplatz' }, { at: '13:15', go: 'home:buurehuus' }, { at: '16:30', go: 'hof' }, { at: '17:30', go: 'beiz' }, { at: '19:00', go: 'sitzplatz' }, { at: '21:00', go: 'home:buurehuus' }],
-    sleep: ['00:30', '07:30'],
-    clicks: ['Vibe Code forever! 💻', 'Dörfi de Luna en Snack geh?', 'Mige – gits en Zigi?'],
+    routine: [{ at: '10:00', go: 'hof' }, { at: '12:15', go: 'sitzplatz' }, { at: '13:30', go: 'home:buurehuus' }, { at: '15:00', go: 'fischerplatz', do: 'fish' }, { at: '17:30', go: 'beiz' }, { at: '19:00', go: 'sitzplatz' }],
+    arriveLines: ['Hoi Mige, sind mer!', 'Lenzburg–Nesselnbach: 25 Minute, ganz liislig.', 'Mige, dörf i de Mini alade?'],
+    leaveLines: ['Tschüss Mige, bis bald!', 'Hei nach Lenzburg. Mariana, chunnsch?', 'De Mini isch glade, los!'],
+    clicks: ['Vibe Code forever! 💻', 'Dörfi de Luna en Snack geh?', 'Mige – gits en Zigi?', 'Mariana, chunnsch mit go fische?'],
     random: ['Vibe Code forever! 💻', 'Dörfi de Luna en Snack geh?', 'Mige – gits en Zigi?'],
     night: ['Vibe Code forever! 💻', 'Mige – gits en Zigi?'],
+    // fishing at the Löli-Weiher (secretly – the Weiher-Buur chases them away)
+    fishLines: ["Psst, de Weiher-Buur dörf üs nid gseh!", 'Hüt biisst sicher eine.', 'Mariana, lueg, de Schwimmer!', 'So schön ruhig do…'],
+    biteLines: ['Es biisst!', 'Ha eine! 🐟', 'Ui, en Grosse!', 'Mist, abghaue.'],
+    caughtLines: ['Ups… verwütscht! Hau ab, Mariana!', 'Mir sind nur am Luege gsi, ehrlich!', 'Schnäll, hei!'],
+  },
+  // Mariana: Joel's girlfriend, from Lenzburg too. Goes fishing with him at the Löli-Weiher every afternoon.
+  {
+    id: 'mariana', name: 'Mariana', home: 'buurehuus', visitor: true, cycle: true,
+    look: { skin: '#e8b890', hair: '#2b1a12', hairStyle: 'long', shirt: '#2f9a8a', pants: '#3a3f55', shoes: '#f4f1ea' },
+    voice: 1.3, favorites: ['sitzplatz', 'hof', 'weiher'],
+    routine: [{ at: '10:00', go: 'hof' }, { at: '11:00', go: 'dorfplatz' }, { at: '12:15', go: 'sitzplatz' }, { at: '13:30', go: 'home:buurehuus' }, { at: '15:00', go: 'fischerplatz', do: 'fish' }, { at: '17:30', go: 'sitzplatz' }],
+    arriveLines: ['Hoi zäme! Mina, Luna, mir sind do!', 'Endlich wider Nesselnbach-Luft!', 'Hoi Mige! Hesch Kafi?'],
+    leaveLines: ['Tschüss zäme, bis zum nöchschte Mol!', 'Joel, hesch de Schlüssel?', 'Adieu Mina, adieu Luna!'],
+    clicks: ['Hoi! Gömmer go fische, Joel?', 'Shhh… de Weiher-Buur chunnt!', 'Ich ha de grösser gfange als de Joel. 🐟'],
+    random: ['Hoi! Gömmer go fische, Joel?', 'Ich ha de grösser gfange als de Joel. 🐟', 'So schön isch es do.'],
+    night: ['Morn wider a Weiher, Joel?'],
+    fishLines: ["Joel, du machsch z'vill Lärm!", 'So schön ruhig do am Weiher…', 'Ha eine! …nei, nur Alge.', 'Chunnt de Weiher-Buur?'],
+    biteLines: ['Ha eine! 🐟', 'Joel, lueg, min isch grösser!', 'Es zieht! Es zieht!'],
+    caughtLines: ['Schnäll, Joel, hau ab!', 'Mir sind scho wäg, sorry!', 'Ui ui ui, renn!'],
+  },
+  // De Weiher-Buur: owner of the Löli-Weiher (farm at Kapellenweg 14). Checks on his pond and chases anglers away.
+  {
+    id: 'weiherbuur', name: 'De Weiher-Buur', home: 'h89', guard: 'weiher',
+    look: { skin: '#d9a27a', hair: '#8a8a8a', hairStyle: 'cap', cap: '#3b5a2a', shirt: '#5a6e3a', pants: '#4a4038', beard: true },
+    voice: 0.65, favorites: ['weiher', 'kapellenweg'],
+    routine: [{ at: '07:00', go: 'weiher' }, { at: '08:30', go: 'home:h89' }, { at: '13:30', go: 'kapellenweg' }, { at: '16:15', go: 'weiher' }, { at: '17:15', go: 'home:h89' }, { at: '19:00', go: 'weiher' }, { at: '19:45', go: 'home:h89' }],
+    sleep: ['21:30', '06:00'],
+    clicks: ['Das isch MIN Weiher!', "Hesch du gfischt? Gib's zue!", "D'Fisch ghöre mir, verstande?", 'Verschwind jetz!'],
+    random: ['Wenn i die zwei wider verwütsche…', 'Mini Egli, mini Rotfädere.', "D'Änte sind die einzige, wo dörfe."],
+    night: ['Am Weiher isch jetz Rueh.'],
+    guardLines: ['HEY! Wäg vo mim Weiher!', 'Do wird nid gfischt! Verschwindet!', 'Scho wider ihr zwei! Abfahre!', 'Ich rüef de Polizischt!'],
   },
   // ---------------- villagers ----------------
   {
     id: 'buur', name: 'De Buur', home: 'haus6',
     look: { skin: '#d9a27a', hair: '#5a3a22', hairStyle: 'straw', shirt: '#3a6f9a', pants: '#3a4a6a', beard: true },
-    voice: 0.7, favorites: ['ifangweg', 'kapellenweg', 'unterdorf'],
+    voice: 0.7, favorites: ['feld', 'weide', 'unterdorf'],
     routine: [{ at: '05:30', go: 'weide' }, { at: '07:00', go: 'unterdorf' }, { at: '09:00', go: 'feld' }, { at: '12:00', go: 'home:haus6' }, { at: '13:30', go: 'feld' }, { at: '17:00', go: 'weide' }, { at: '19:00', go: 'home:haus6' }],
     sleep: ['21:00', '05:00'],
-    clicks: ['Grüessech! Muesch d\'Chüe go luege!', 'D\'Blüemli git am meischte Milch.', 'Hüt wird gheuet!', 'Ich ha kei Ziit, ich mues schaffe!'],
-    random: ['Hoffentlich rägnet\'s bald.', 'D\'Hüehner händ hüt vill gleit.'],
+    clicks: ['Grüessech! Lueg, mis Feld!', 'De Traktor lauft wie gschmiert.', 'Hüt wird gheuet!', 'Ich ha kei Ziit, ich mues schaffe!'],
+    random: ['Hoffentlich rägnet\'s bald.', 'D\'Furche müend grad si.', 'S\'Chorn staht guet dis Johr.'],
     night: ['Morn isch früe Tagwach.'],
   },
   {

@@ -40,27 +40,74 @@
     return null;
   };
 
+  // ---------------- fields (OSM farmland around the village) ----------------
+  const inPoly = (x, z, ring) => {
+    let c = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, zi] = ring[i], [xj, zj] = ring[j];
+      if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
+    }
+    return c;
+  };
+  map.fields = (S.fields || []).map((f, i) => {
+    const xs = f.pts.map((p) => p[0]), zs = f.pts.map((p) => p[1]);
+    return Object.assign({ i, bbox: [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)] }, f);
+  });
+  // the field at (x, z), or null
+  map.fieldAt = function (x, z) {
+    for (const f of map.fields) {
+      const b = f.bbox;
+      if (x < b[0] || x > b[2] || z < b[1] || z > b[3]) continue;
+      if (inPoly(x, z, f.pts)) return f;
+    }
+    return null;
+  };
+
+  // ---------------- water (the Löli-Weiher) ----------------
+  map.water = (S.water || []).map((w, i) => {
+    const xs = w.pts.map((p) => p[0]), zs = w.pts.map((p) => p[1]);
+    return Object.assign({ i, bbox: [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)] }, w);
+  });
+  // signed distance to the nearest pond edge (negative = in the water); Infinity far away
+  map.pondDist = function (x, z) {
+    let best = Infinity;
+    for (const w of map.water) {
+      const b = w.bbox;
+      if (x < b[0] - 12 || x > b[2] + 12 || z < b[1] - 12 || z > b[3] + 12) continue;
+      let d = Infinity;
+      for (let i = 0, j = w.pts.length - 1; i < w.pts.length; j = i++) d = Math.min(d, distSeg(x, z, w.pts[j][0], w.pts[j][1], w.pts[i][0], w.pts[i][1]));
+      if (inPoly(x, z, w.pts)) d = -d;
+      best = Math.min(best, d);
+    }
+    return best;
+  };
+  map.fishing = map.water[0] ? { x: map.water[0].fishing[0], z: map.water[0].fishing[1], cx: map.water[0].centre[0], cz: map.water[0].centre[1] } : null;
+
   // ---------------- grids ----------------
   const N = W * H;
   map.walkCost = new Float32Array(N);
   map.animalCost = new Float32Array(N);
+  map.duckCost = new Float32Array(N);
   map.onStreet = new Uint8Array(N);
   for (let cz = 0; cz < H; cz++)
     for (let cx = 0; cx < W; cx++) {
       const { x, z } = map.cellCentre(cx, cz);
       const i = cz * W + cx;
-      const blocked = map.inBuilding(x, z, 0.4);
+      const pd = map.pondDist(x, z);
+      const blocked = map.inBuilding(x, z, 0.4) || pd < 0.6;
       const sd = map.streetDist(x, z);
+      map.duckCost[i] = pd < -0.3 ? 1 : pd < 2.5 && !map.inBuilding(x, z, 0.4) ? 2.5 : 0; // ducks swim, sometimes waddle on the shore
       map.onStreet[i] = sd < 0 ? 1 : 0;
-      map.walkCost[i] = blocked ? 0 : sd < 0.5 ? 1 : sd < 2.5 ? 1.6 : 2.6; // people like streets and sidewalks
-      map.animalCost[i] = blocked ? 0 : sd < 0 ? 2 : 1; // cats prefer gardens
+      const field = sd > 2.5 && map.fieldAt(x, z);
+      map.walkCost[i] = blocked ? 0 : sd < 0.5 ? 1 : sd < 2.5 ? 1.6 : field && field.kind !== 'meadow' ? 3.5 : 2.6; // people like streets and sidewalks, not crops
+      map.animalCost[i] = blocked ? 0 : sd < 0 ? 2 : field ? 1.3 : 1; // cats prefer gardens
     }
 
   // ---------------- buildings ----------------
   const LINES = {
     chapel: { lines: ['Bimm… bamm… 🔔', 'D\'Heiligkreuz-Kapälle. Ganz still do inne.', 'Do brönnt immer e Cherze.'], sound: 'bell' },
     beiz: { lines: ['Prost! 🍺', 'S\'Casino – s\'Vereinslokal vo Nesselnbach.', 'Stammtisch isch am Friitig!'], sound: 'clink' },
-    farmhouse: { lines: ["S'Buurehuus, Niederwilerstrasse 3.", "Links wohne, rächts d'Schüür.", "Do wohne d'Mina und d'Luna. 🐾"], sound: 'door' },
+    farmhouse: { lines: ["S'Buurehuus, Niederwilerstrasse 3.", "Links wohne, rächts d'Schüür.", "Do wohne d'Mige, d'Mina und d'Luna. 🐾", "De Joel und d'Mariana parkiere ihre Mini do, wenn si us Lenzburg cho sind."], sound: 'door' },
     barn: { lines: ['%a', 'Do schmöckt\'s nach Heu.'], sound: 'door' },
     garage: { lines: ['%a', 'Do staht s\'Velo.'], sound: 'door' },
     house: { lines: ['%a', 'Do wohnt\'s sich schön.'], sound: 'door' },
@@ -94,7 +141,13 @@
     const n = farm.doorN, t = [-n[1], n[0]], dw = NB.Iso.unrot(du, dv);
     const sg = t[0] * dw[0] + t[1] * dw[1] >= 0 ? 1 : -1;
     const bx = farm.door[0] + t[0] * sg * 2 + n[0] * 0.5, bz = farm.door[1] + t[1] * sg * 2 + n[1] * 0.5;
-    map.farmProps = { bench: { x: bx, z: bz, heading: Math.atan2(n[0], n[1]) }, table: { x: tx, z: tz } };
+    // visitors' parking spot: in the yard on the barn side of the front door, a car length off the wall
+    let parking = null;
+    for (const [k, m] of [[7, 4.5], [9, 4.5], [6, 6], [11, 4], [7, 7], [5, 3.5], [13, 5]]) {
+      const x = farm.door[0] - t[0] * sg * k + n[0] * m, z = farm.door[1] - t[1] * sg * k + n[1] * m;
+      if (!map.inBuilding(x, z, 1.4) && map.streetDist(x, z) > 1.5) { parking = { x, z, heading: Math.atan2(t[0] * sg, t[1] * sg) }; break; }
+    }
+    map.farmProps = { bench: { x: bx, z: bz, heading: Math.atan2(n[0], n[1]) }, table: { x: tx, z: tz }, parking };
     map.pois.sitzplatz = [tx - 2.2, tz - 2.2, tx + 2.2, tz + 2.2];
     // the table itself is not walkable
     for (let cz = 0; cz < H; cz++) for (let cx = 0; cx < W; cx++) {
@@ -111,6 +164,36 @@
   map.busStops = S.stops.map((s) => ({ name: s.name, x: s.at[0], z: s.at[1] }));
 
   // random walkable point inside a POI rect (metres); returns {x, z} or null
+  // tractor lanes across a field: rows along the field's long axis, 3.6 m apart, driven back and forth
+  // (boustrophedon). Only the parts inside the painted ground, clear of buildings and streets. Cached per field.
+  const laneCache = new Map();
+  map.fieldLanes = function (f) {
+    if (laneCache.has(f)) return laneCache.get(f);
+    const a = f.angle, dx = Math.cos(a), dz = Math.sin(a), nx = -dz, nz = dx;
+    let t0 = Infinity, t1 = -Infinity, s0 = Infinity, s1 = -Infinity;
+    for (const [x, z] of f.pts) { const t = x * dx + z * dz, s = x * nx + z * nz; t0 = Math.min(t0, t); t1 = Math.max(t1, t); s0 = Math.min(s0, s); s1 = Math.max(s1, s); }
+    const M = 40;
+    const ok = (x, z) => x > bx0 - M && x < bx1 + M && z > bz0 - M && z < bz1 + M && inPoly(x, z, f.pts) && !map.inBuilding(x, z, 2.5) && map.streetDist(x, z) > 2.5 && map.pondDist(x, z) > 4;
+    const rows = [];
+    let flip = false;
+    for (let s = s0 + 3; s < s1 - 2; s += 3.6, flip = !flip) {
+      const runs = []; let run = null;
+      for (let t = t0; t <= t1; t += 1) {
+        if (ok(dx * t + nx * s, dz * t + nz * s)) { if (run) run[1] = t; else run = [t, t]; }
+        else if (run) { runs.push(run); run = null; }
+      }
+      if (run) runs.push(run);
+      const segs = runs.filter((r) => r[1] - r[0] >= 12).map(([ta, tb]) => [ta + 1.5, tb - 1.5]);
+      if (flip) segs.reverse();
+      for (const [ta, tb] of segs) {
+        const A = { x: dx * ta + nx * s, z: dz * ta + nz * s }, B = { x: dx * tb + nx * s, z: dz * tb + nz * s };
+        rows.push(flip ? { a: B, b: A } : { a: A, b: B });
+      }
+    }
+    laneCache.set(f, rows);
+    return rows;
+  };
+
   map.randomIn = function (area, cost) {
     const a = typeof area === 'string' ? map.pois[area] : area;
     if (!a) return null;

@@ -298,6 +298,30 @@
       m.cbox(0, 5.03, 1.5, 2.3, 0.06, 1.2, '#2b3d55', { noOutline: true });
       m.cbox(0, 0, 3.0, 2.3, 9.6, 0.2, '#f2f2ea');
       [-0.8, 0.8].forEach((x) => m.cbox(x, 5.04, 0.8, 0.4, 0.06, 0.2, '#fff8c0', { noOutline: true, light: '#fff2a0' }));
+    } else if (type === 'mini') {
+      // small two-door with a white roof and yellow mirror caps (electric Mini)
+      m.shadow(-0.85, -1.9, 1.7, 3.8, 1.3);
+      [[-0.78, 1.15], [0.78, 1.15], [-0.78, -1.15], [0.78, -1.15]].forEach(([x, z]) => wheel(x, z, 0.3));
+      m.cbox(0, 0, 0.28, 1.7, 3.7, 0.62, color);
+      m.cbox(0, -0.15, 0.9, 1.55, 2.25, 0.48, color);
+      panels(0, -0.15, 0.95, 1.55, 2.25, 0.38, '#2b3d55');
+      m.cbox(0, -0.15, 1.38, 1.6, 2.3, 0.1, '#f4f4f0');
+      [-0.9, 0.9].forEach((x) => m.cbox(x, 0.85, 0.95, 0.12, 0.22, 0.14, '#e8d53a', { noOutline: true }));
+      [-0.5, 0.5].forEach((x) => m.cbox(x, 1.88, 0.62, 0.3, 0.06, 0.26, '#fff8c0', { noOutline: true, light: '#fff2a0' }));
+      [-0.55, 0.55].forEach((x) => m.cbox(x, -1.88, 0.6, 0.26, 0.06, 0.2, '#e03a3a', { noOutline: true }));
+    } else if (type === 'tractor') {
+      // farm tractor: big rear wheels with yellow hubs, long bonnet, glass cab, exhaust stack
+      m.shadow(-0.95, -1.7, 1.9, 3.8, 1.7);
+      [-0.72, 0.72].forEach((x) => { m.cbox(x, -0.85, 0, 0.5, 1.5, 1.5, '#2a2a2e'); m.cbox(x + Math.sign(x) * 0.26, -0.85, 0.55, 0.06, 0.42, 0.42, '#e8c23a', { noOutline: true }); });
+      [-0.68, 0.68].forEach((x) => m.cbox(x, 1.3, 0, 0.3, 0.84, 0.84, '#2a2a2e'));
+      m.cbox(0, 0.15, 0.45, 1.1, 3.1, 0.35, '#3a3a40');
+      m.cbox(0, 1.15, 0.75, 1.0, 1.9, 0.75, color);
+      m.cbox(0, 2.11, 0.8, 0.9, 0.06, 0.6, '#2a2a2e', { noOutline: true });
+      [-0.3, 0.3].forEach((x) => m.cbox(x, 2.13, 1.2, 0.22, 0.06, 0.16, '#fff8c0', { noOutline: true, light: '#fff2a0' }));
+      m.cbox(0.38, 0.35, 1.45, 0.12, 0.12, 0.95, '#55555c');
+      m.cbox(0, -0.75, 0.75, 1.3, 1.3, 0.5, color);
+      m.cbox(0, -0.75, 1.25, 1.2, 1.2, 1.1, '#9ccbe0', { light: '#fff2c8' });
+      m.cbox(0, -0.75, 2.35, 1.42, 1.42, 0.14, color);
     } else {
       m.shadow(-0.9, -2, 1.8, 4, 1.4);
       [[-0.9, 1.3], [0.9, 1.3], [-0.9, -1.3], [0.9, -1.3]].forEach(([x, z]) => wheel(x, z, 0.36));
@@ -307,6 +331,79 @@
       [-0.55, 0.55].forEach((x) => m.cbox(x, 2.03, 0.75, 0.35, 0.06, 0.16, '#fff8c0', { noOutline: true, light: '#fff2a0' }));
     }
     return (vehCache[key] = m.render());
+  };
+
+  // round hay bale (meadows in summer / autumn)
+  M.bale = function (variant) {
+    const key = 'bale' + (variant | 0);
+    if (!treeCache[key]) {
+      const m = I.model(((variant | 0) % 4) * 0.4);
+      m.shadow(-0.75, -0.7, 1.5, 1.4, 1.3);
+      m.cbox(0, 0, 0, 1.5, 1.4, 1.3, '#dcb75e');
+      m.cbox(0, 0, 0.5, 1.54, 1.44, 0.1, '#b8903c', { noOutline: true });
+      m.cbox(0, 0, 0.95, 1.54, 1.44, 0.1, '#b8903c', { noOutline: true });
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+
+  // reeds / cattails on the pond shore
+  M.reed = function (variant) {
+    const key = 'reed' + (variant | 0);
+    if (!treeCache[key]) {
+      const r = NB.seeded(variant * 29 + 11), W = 9, H = 15;
+      treeCache[key] = art(W, H, (px, rect) => {
+        const stalks = [[1, 5], [3, 2], [5, 4], [7, 6]];
+        stalks.forEach(([x, top], k) => {
+          const col = k % 2 ? '#6aa552' : '#8bbd63';
+          for (let y = top + ((r() * 2) | 0); y < H; y++) px(x, y, P.snow && y < top + 3 ? '#f2f6f8' : col);
+          if (k === 1 || k === 2) { rect(x - (k === 1 ? 0 : 1), top - 1, 2, 3, '#6b4a2e'); px(x + (k === 1 ? 1 : 0), top - 2, '#8bbd63'); }
+          if (r() < 0.5) px(x + 1, H - 4 - ((r() * 4) | 0), col);
+        });
+      }, { shadowH: 1.2, shadowW: 7 });
+    }
+    return treeCache[key];
+  };
+
+  // wooden sign post with a board
+  M.sign = function () {
+    if (!treeCache.sign) {
+      const m = I.model(I.towardCamera); // board faces the viewer
+      m.shadow(-0.07, -0.07, 0.14, 0.14, 1.5);
+      m.cbox(0, 0, 0, 0.14, 0.14, 1.45, '#6b4a2e');
+      m.cbox(0, 0.1, 1.0, 1.3, 0.08, 0.65, '#f3e6c4');
+      m.cbox(0, 0.15, 1.42, 1.1, 0.02, 0.14, '#c0392b', { noOutline: true });
+      m.cbox(0, 0.15, 1.12, 0.9, 0.02, 0.08, '#4a3f45', { noOutline: true });
+      treeCache.sign = m.render();
+    }
+    return treeCache.sign;
+  };
+
+  // ---------- ducks (drawn facing right; swim = no shadow, walk = feet + shadow) ----------
+  const DUCK = {
+    swim: ['......hhh.', '.....hhehk', '.....hhhh.', '......ww..', 't...bbbbb.', 'tbbbbbbbb.', '.bbbbbbb..'],
+    dip: ['..........', '..........', 'tt........', '.tbbbbbb..', '..bbbbbbb.', '....bbhhh.', '.....hhhk.'],
+  };
+  M.duck = function (L) {
+    L = Object.assign({ sex: 'm' }, L);
+    const male = L.sex === 'm';
+    const head = male ? '#2e7d4f' : '#8a6a4a', body = male ? '#8c7a66' : '#a58a68', wing = male ? '#6e5e4c' : '#86704f';
+    const colorOf = (ch, x, y) => {
+      if (ch === 'h') return head;
+      if (ch === 'e') return '#1a1a1a';
+      if (ch === 'k' || ch === 'f') return '#e9a23b';
+      if (ch === 'w') return male ? '#f4f0e6' : body;
+      if (ch === 't') return male ? '#3a3330' : wing;
+      if (ch === 'b') return y === 5 && x >= 3 && x <= 6 ? wing : body;
+      return body;
+    };
+    const mk = (rows, o) => { const right = I.rows(rows, colorOf, o); return { right, left: flipRec(right) }; };
+    const bob = ['..........'].concat(DUCK.swim.slice(0, 6));
+    return {
+      swim: [mk(DUCK.swim, { shadow: false }), mk(bob, { shadow: false })],
+      dip: mk(DUCK.dip, { shadow: false }),
+      walk: [mk(DUCK.swim.concat(['...f..f...']), { shadowW: 8, shadowH: 1.4 }), mk(DUCK.swim.concat(['..f....f..']), { shadowW: 8, shadowH: 1.4 })],
+    };
   };
 
   // mirror a finished sprite record horizontally

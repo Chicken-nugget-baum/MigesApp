@@ -12,4 +12,10 @@ NB.Data.animals = [
     talk: ['Chlöpfle bitte.', 'Gib mir Snacks, du Schiss!', 'Wo blibt mis Znacht?!', 'Chlöpfle. Jetzt.', "Ich bi d'Chefin vom Hof."] },
   { kind: 'cat', name: 'Fleckli', area: 'kapelle', look: { fur: '#e08a3c', pattern: 'socks' }, voice: 1.15 },
   { kind: 'cat', name: 'Minka', area: 'kapellenweg', look: { fur: '#f2ede4', dark: '#c8b8a0', pattern: 'tabby' }, voice: 1.2 },
+  // Ducks on the Löli-Weiher (area = pond + shore). sex: 'm' = green-headed drake, 'f' = brown duck.
+  { kind: 'duck', name: 'Erpel Edi', area: 'weiher', look: { sex: 'm' }, voice: 0.9 },
+  { kind: 'duck', name: 'Ente Emma', area: 'weiher', look: { sex: 'f' }, voice: 1.1 },
+  { kind: 'duck', name: 'Erpel Fritz', area: 'weiher', look: { sex: 'm' }, voice: 0.95 },
+  { kind: 'duck', name: 'Ente Lotti', area: 'weiher', look: { sex: 'f' }, voice: 1.2 },
+  { kind: 'duck', name: 'Ente Rosa', area: 'weiher', look: { sex: 'f' }, voice: 1.05 },
 ];

@@ -45,10 +45,10 @@ window.NB = window.NB || {};
   function zurichParts() {
     const parts = new Intl.DateTimeFormat('de-CH', {
       timeZone: 'Europe/Zurich', hour: '2-digit', minute: '2-digit', second: '2-digit',
-      month: 'numeric', hour12: false,
+      month: 'numeric', day: 'numeric', hour12: false,
     }).formatToParts(new Date());
     const get = (t) => parseInt(parts.find((p) => p.type === t).value, 10);
-    return { h: get('hour') % 24, m: get('minute'), s: get('second'), month: get('month') };
+    return { h: get('hour') % 24, m: get('minute'), s: get('second'), month: get('month'), day: get('day') };
   }
   NB.toMin = (s) => { const [h, m] = s.split(':').map(Number); return h * 60 + (m || 0); };
   NB.inWindow = function (min, from, to) {
@@ -62,6 +62,7 @@ window.NB = window.NB || {};
   const startReal = Date.now();
   NB.clock = {
     month: zp.month,
+    day: zp.month * 31 + zp.day, // changes once a day (seeds per-day variation)
     speed,
     minutes() {
       return (((startMin + ((Date.now() - startReal) / 60000) * speed) % 1440) + 1440) % 1440;
