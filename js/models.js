@@ -480,6 +480,15 @@
       for (let y = 15; y <= 16; y++) rows[y] = rows[y].replace(/p/g, 'l');
     }
     if (L.apron && !isB) for (let y = 10; y <= 14; y++) for (let x = isS ? 6 : 3; x <= (isS ? 7 : 6); x++) if (rows[y][x] !== '.') setCh(rows, y, x, 'a');
+    // embroidered bands across the top (two colours, alternating pixels) - e.g. a Mexican huipil-style blouse
+    if (L.bands) for (let y = 10; y <= 11; y++) for (let x = 0; x < 10; x++) if (rows[y][x] === 't') setCh(rows, y, x, (x + y) % 2 ? 'x' : 'z');
+    // a flower in the hair (above the ear on the right side; on the back of the head from behind)
+    if (L.flower) {
+      const fx = isF ? 7 : isB ? 1 : 2;
+      setCh(rows, 3, fx, 'o'); setCh(rows, 3, fx + 1, 'o'); setCh(rows, 4, fx, 'o'); setCh(rows, 4, fx + 1, 'o'); setCh(rows, 4, fx + (isB ? 1 : 0), 'y');
+    }
+    // hoop earrings
+    if (L.earrings) { if (isF) { setCh(rows, 7, 1, 'r'); setCh(rows, 7, 8, 'r'); } if (isS) setCh(rows, 7, 3, 'r'); }
     return rows;
   }
   M.person = function (L) {
@@ -487,6 +496,7 @@
     const colors = {
       h: L.hair, s: L.skin, e: '#2b2b3a', m: NB.shade(L.skin, 0.78), t: L.shirt, p: L.pants, f: L.shoes,
       g: '#1e1e28', c: L.cap || '#d94a4a', y: '#e8c860', a: L.apron || '#ffffff', d: L.dress || L.shirt, l: L.legs || L.skin, k: L.scarf || '#c0392b',
+      x: (L.bands || [])[0] || '#ffd23f', z: (L.bands || [])[1] || '#2fbf71', o: L.flower || '#ff4f7a', r: '#f3c84a',
     };
     const col = (ch) => colors[ch];
     const build = (base, view, legs, post) => {

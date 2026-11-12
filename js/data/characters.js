@@ -103,20 +103,43 @@ NB.Data.characters = [
     biteLines: ['Es biisst!', 'Ha eine! 🐟', 'Ui, en Grosse!', 'Mist, abghaue.'],
     caughtLines: ['Ups… verwütscht! Hau ab, Mariana!', 'Mir sind nur am Luege gsi, ehrlich!', 'Schnäll, hei!'],
   },
-  // Mariana: Joel's girlfriend, from Lenzburg too. Goes fishing with him at the Löli-Weiher every afternoon.
+  // Mariana: Joel's girlfriend, from Mexico, lives with him in Lenzburg. Long black hair with a flower, hoop
+  // earrings, embroidered blouse in rosa mexicano. Mixes Spanish into her Swiss German. Fishes with Joel.
   {
     id: 'mariana', name: 'Mariana', home: 'buurehuus', visitor: true, cycle: true,
-    look: { skin: '#e8b890', hair: '#2b1a12', hairStyle: 'long', shirt: '#2f9a8a', pants: '#3a3f55', shoes: '#f4f1ea' },
-    voice: 1.3, favorites: ['sitzplatz', 'hof', 'weiher'],
+    look: { skin: '#c98a5e', hair: '#1c1210', hairStyle: 'long', flower: '#ff4f7a', earrings: true, shirt: '#e4007c', bands: ['#ffd23f', '#2fbf71'], pants: '#3a3f55', shoes: '#f4f1ea' },
+    voice: 1.35, favorites: ['sitzplatz', 'hof', 'weiher'],
     routine: [{ at: '10:00', go: 'hof' }, { at: '11:00', go: 'dorfplatz' }, { at: '12:15', go: 'sitzplatz' }, { at: '13:30', go: 'home:buurehuus' }, { at: '15:00', go: 'fischerplatz', do: 'fish' }, { at: '17:30', go: 'sitzplatz' }],
-    arriveLines: ['Hoi zäme! Mina, Luna, mir sind do!', 'Endlich wider Nesselnbach-Luft!', 'Hoi Mige! Hesch Kafi?'],
-    leaveLines: ['Tschüss zäme, bis zum nöchschte Mol!', 'Joel, hesch de Schlüssel?', 'Adieu Mina, adieu Luna!'],
-    clicks: ['Hoi! Gömmer go fische, Joel?', 'Shhh… de Weiher-Buur chunnt!', 'Ich ha de grösser gfange als de Joel. 🐟'],
-    random: ['Hoi! Gömmer go fische, Joel?', 'Ich ha de grösser gfange als de Joel. 🐟', 'So schön isch es do.'],
-    night: ['Morn wider a Weiher, Joel?'],
-    fishLines: ["Joel, du machsch z'vill Lärm!", 'So schön ruhig do am Weiher…', 'Ha eine! …nei, nur Alge.', 'Chunnt de Weiher-Buur?'],
-    biteLines: ['Ha eine! 🐟', 'Joel, lueg, min isch grösser!', 'Es zieht! Es zieht!'],
-    caughtLines: ['Schnäll, Joel, hau ab!', 'Mir sind scho wäg, sorry!', 'Ui ui ui, renn!'],
+    arriveLines: ['¡Hola! Mina, Luna, mir sind do!', '¡Buenos días, Nesselnbach!', 'Hoi Iris! Hesch Kafi? ¡Por favor!'],
+    leaveLines: ['¡Adiós! Bis zum nöchschte Mol!', 'Joel, hesch de Schlüssel? ¡Vámonos!', 'Hasta luego, Mina und Luna!'],
+    clicks: ['¡Hola! Gömmer go fische, Joel?', 'In Mexiko isch de See wärmer, ¡ay!', 'Ich ha de grösser gfange als de Joel. 🐟', 'Hüt chochi Tacos für alli. 🌮', '¡Ándale, ándale! Es längt jetz.'],
+    random: ['¡Qué frío! Isch das immer so chalt do?', 'Iris, dini Züpfe isch fasch so guet wie Tamales.', 'Yves, chunnsch mit go fische?', 'Ich vermisse d\'Sunne vo Mexiko… aber d\'Chatze sind do.'],
+    night: ['Buenas noches, Nesselnbach.'],
+    fishLines: ["Joel, du machsch z'vill Lärm! ¡Silencio!", 'So schön ruhig do am Weiher…', 'Ha eine! …nei, nur Alge. ¡Qué pena!', 'Chunnt de Weiher-Buur? ¡Cuidado!'],
+    biteLines: ['¡Sí! Ha eine! 🐟', 'Joel, lueg, min isch grösser!', 'Es zieht! ¡Rápido!'],
+    caughtLines: ['¡Ándale, Joel, hau ab!', '¡Ay, no! Mir sind scho wäg!', '¡Corre, corre!'],
+  },
+  // Iris: Joel's and Yves's mother. Lives at the Buurehuus (assumed - change `home` if not).
+  {
+    id: 'iris', name: 'Iris', home: 'buurehuus', cycle: true,
+    look: { skin: '#f1c7a0', hair: '#a8763e', hairStyle: 'long', shirt: '#7b5ea7', pants: '#3a3f55', shoes: '#4a3a30' },
+    voice: 1.2, favorites: ['sitzplatz', 'hof', 'dorfplatz', 'kapelle'],
+    routine: [{ at: '07:30', go: 'hof' }, { at: '09:00', go: 'dorfplatz' }, { at: '10:30', go: 'home:buurehuus' }, { at: '12:00', go: 'sitzplatz' }, { at: '13:00', go: 'home:buurehuus' }, { at: '16:00', go: 'kapelle' }, { at: '17:30', go: 'hof' }, { at: '19:15', go: 'sitzplatz' }, { at: '21:30', go: 'home:buurehuus' }],
+    sleep: ['23:00', '06:45'],
+    clicks: ['Joel! Hesch gnueg gässe?', 'Mariana, wotsch no en Kafi?', 'Yves, rum emol dis Zimmer uf!', 'Ihr sind mir Zwei!'],
+    random: ['Wenn chunnt de Joel wider?', "D'Chatze händ scho wider Hunger.", 'Am Sunntig gits Züpfe für alli.', 'De Yves isch scho wider am Zocke.'],
+    night: ['Gönd is Bett, alli zäme!'],
+  },
+  // Yves: Joel's brother. Lives at the Buurehuus too (assumed).
+  {
+    id: 'yves', name: 'Yves', home: 'buurehuus', cycle: true,
+    look: { skin: '#eec1a0', hair: '#4a3220', hairStyle: 'short', shirt: '#2a2a2e', pants: '#3a5f9a', shoes: '#f4f1ea' },
+    voice: 0.9, favorites: ['sitzplatz', 'hof', 'beiz', 'bushalt'],
+    routine: [{ at: '08:15', go: 'bushalt' }, { at: '08:45', go: 'home:buurehuus' }, { at: '12:00', go: 'sitzplatz' }, { at: '13:00', go: 'home:buurehuus' }, { at: '17:00', go: 'beiz' }, { at: '18:30', go: 'hof' }, { at: '19:15', go: 'sitzplatz' }, { at: '22:00', go: 'home:buurehuus' }],
+    sleep: ['00:30', '07:30'],
+    clicks: ['Hey Brüederli!', 'Joel, zocke mer hüt no?', 'Mariana, hesch du de Joel gseh?', 'Lass mi in Rueh, Mann!'],
+    random: ['Wär chunnt go Pingpong spile?', 'De Mini vom Joel isch scho geil.', 'Mami, was gits z\'Ässe?'],
+    night: ['No ei Rundi, denn gang i is Bett.'],
   },
   // De Weiher-Buur: owner of the Löli-Weiher (farm at Kapellenweg 14). Checks on his pond and chases anglers away.
   {
