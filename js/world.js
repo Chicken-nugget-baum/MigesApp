@@ -150,6 +150,19 @@
     }
     map.farmProps = { bench: { x: bx, z: bz, heading: Math.atan2(n[0], n[1]) }, table: { x: tx, z: tz }, parking };
     map.parkings = { mige: parking };
+    // named spots at the Sitzplatz so people don't stack: 4 stools round the table, 2 bench seats, standing places
+    const seats = [];
+    for (const [u, v] of [[1.25, 0], [-1.25, 0], [0, 1.25], [0, -1.25]]) {
+      const [ox, oz] = NB.Iso.unrot(u * 1.2, v * 1.2);
+      seats.push({ x: tx + ox, z: tz + oz, face: Math.atan2(-ox, -oz), sit: true });
+    }
+    const bh = Math.atan2(n[0], n[1]), px = Math.cos(bh), pz = -Math.sin(bh);
+    for (const k of [-0.5, 0.5]) seats.push({ x: bx + px * k, z: bz + pz * k, face: bh, sit: true, bench: true });
+    for (let a = 0.4; a < Math.PI * 2; a += Math.PI / 3) {
+      const x = tx + Math.cos(a) * 3.4, z = tz + Math.sin(a) * 3.4;
+      if (!map.inBuilding(x, z, 0.6) && map.streetDist(x, z) > 0.5) seats.push({ x, z, face: Math.atan2(tx - x, tz - z), sit: false });
+    }
+    map.spots = { sitzplatz: seats };
     map.pois.sitzplatz = [tx - 2.2, tz - 2.2, tx + 2.2, tz + 2.2];
     // the table itself is not walkable
     for (let cz = 0; cz < H; cz++) for (let cx = 0; cx < W; cx++) {

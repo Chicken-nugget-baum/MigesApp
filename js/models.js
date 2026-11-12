@@ -572,7 +572,32 @@
       right: side,
       left: side.map(flipRec),
       wave: [build(FRONT, 'front', LEGS.front[0], wave(6)), build(FRONT, 'front', LEGS.front[0], wave(5))],
+      // seated (on a stool / bench): legs folded, the figure ends higher so it sits lower on the same anchor
+      sit: {
+        down: build(FRONT, 'front', LEGS.front[0], (rows) => { rows[13] = '..pppppp..'; rows[14] = '.pppppppp.'; rows[15] = '.ff....ff.'; rows[16] = '..........'; rows[17] = '..........'; }),
+        up: build(BACK, 'back', LEGS.front[0], (rows) => { rows[13] = '..pppppp..'; rows[14] = '..pppppp..'; rows[15] = '..........'; rows[16] = '..........'; rows[17] = '..........'; }),
+        right: build(SIDE, 'side', LEGS.side[0], (rows) => { rows[13] = '...ppppp..'; rows[14] = '......ppp.'; rows[15] = '......fff.'; rows[16] = '..........'; rows[17] = '..........'; }),
+        left: flipRec(build(SIDE, 'side', LEGS.side[0], (rows) => { rows[13] = '...ppppp..'; rows[14] = '......ppp.'; rows[15] = '......fff.'; rows[16] = '..........'; rows[17] = '..........'; })),
+      },
     };
+  };
+
+  // ---------- dogs: border collies (drawn facing right; black back and head, white blaze, chest, legs, tail tip) ----------
+  const DOG = {
+    walk1: ['..........bbb.', '.........bbbbb', 'wb.......bbweb', '.bb......bwwwn', '..bbbbbbbbwwwn', '..bbbbbbbwwww.', '..wbbbbbbbww..', '..ww.ww..ww.ww', '..ww.ww..ww.ww', '..ww.ww..ww.ww'],
+    walk2: ['..........bbb.', '.........bbbbb', 'wb.......bbweb', '.bb......bwwwn', '..bbbbbbbbwwwn', '..bbbbbbbwwww.', '..wbbbbbbbww..', '.ww...ww.ww..w', '.ww...ww..ww.w', 'ww....ww..ww..'],
+    sit: ['..........bbb.', '.........bbbbb', '.........bbweb', '.........bwwwn', '......bbbbwwwn', '....bbbbbbwww.', '..wbbbbbbbww..', '..wbbbbbbwww..', '..wwbbb..ww...', '..wwww...ww...'],
+    lie: ['..............', '..............', '..............', '..........bbb.', '.........bbbbb', 'wb.......bbweb', '.bbbbbbbbbwwwn', '..bbbbbbbbwwwn', '.wwbbbbbbwwww.', '.wwww....wwww.'],
+  };
+  M.dog = function (L) {
+    L = Object.assign({ missing: null }, L);
+    const colorOf = (ch) => ({ b: '#1d1b1e', w: '#f4f2ee', e: '#c9a86a', n: '#3a3a3e' }[ch]);
+    // the front-left leg is the far front leg when facing right (columns 9-10) and the near one when facing left
+    const drop = (rows, cols) => rows.map((r, y) => (y >= 7 ? r.split('').map((c, x) => (cols.includes(x) ? '.' : c)).join('') : r));
+    const legless = (rows, near) => (L.missing === 'frontLeft' ? drop(rows, near ? [12, 13] : [9, 10]) : rows);
+    const mk = (rows, o) => ({ right: I.rows(legless(rows, false), colorOf, o), left: flipRec(I.rows(legless(rows, true), colorOf, o)) });
+    const o = { shadowW: 12, shadowH: 1.8 };
+    return { walk: [mk(DOG.walk1, o), mk(DOG.walk2, o)], stand: mk(DOG.walk1, o), sit: mk(DOG.sit, o), lie: mk(DOG.lie, { shadowW: 13, shadowH: 1.6 }) };
   };
 
   // ---------- cats (drawn facing right) ----------

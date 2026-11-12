@@ -28,6 +28,7 @@
     siren1: [0.5, 0, 620, 0.02, 0.45, 0.08, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 2400],
     siren2: [0.5, 0, 465, 0.02, 0.45, 0.08, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 2400],
     spray: [0.25, 0.1, 3000, 0.02, 0.25, 0.15, 4, 1, 0, 0, 0, 0, 0, 1.5, 0, 0, 0, 0.6, 0.05],
+    bark: [0.7, 0.1, 190, 0.01, 0.07, 0.12, 2, 1.6, -7, 0, 0, 0, 0, 0.3, 0, 0, 0, 0.8, 0.02, 0, 900],
   };
 
   // volume/pan from a world position relative to the camera
@@ -38,6 +39,41 @@
     const dx = pos.x - cx, dy = pz - cy, d = Math.hypot(dx, dy);
     return { vol: NB.clamp(1.2 - d / (half * 2.2), 0, 1), pan: NB.clamp(dx / (half * 1.5), -0.8, 0.8) };
   }
+
+  // ---- real recordings (assets/sounds/*.mp3, CC0 from BigSoundBank - see assets/sounds/README.md). Loaded in the
+  // background after the first click; until then (or from file://) the ZzFX synth versions below are used.
+  const SAMPLES = {
+    meow: ['meow1', 'meow2', 'meow3'], mrr: ['mrr'], quack: ['quack1', 'quack2', 'quack3'],
+    honk: ['horn_car', 'horn_car2'], honkMini: ['horn_mini'], honkTractor: ['horn_tractor'], honkTruck: ['horn_truck'],
+    knock: ['knock'], door: ['door'], cardoor: ['cardoor'], splash: ['splash1', 'splash2'], chirp: ['bird1', 'bird2', 'bird3', 'bird4'],
+    clink: ['clink1', 'clink2'], purr: ['purr'], tractor: ['tractor'], crickets: ['crickets'], fire: ['fire'], bark: ['bark1', 'bark2'],
+  };
+  const FALLBACK = { honkMini: 'honk', honkTractor: 'honk', honkTruck: 'honk', knock: 'door', cardoor: 'door', crickets: 'cricket' };
+  const buffers = {};
+  let samplesLoading = false;
+  A.loadSamples = function () {
+    if (samplesLoading || !Z || location.protocol === 'file:') return;
+    samplesLoading = true;
+    for (const [name, files] of Object.entries(SAMPLES)) files.forEach((f, i) => {
+      fetch('assets/sounds/' + f + '.mp3').then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status))))
+        .then((ab) => Z.audioContext.decodeAudioData(ab))
+        .then((buf) => { (buffers[name] = buffers[name] || [])[i] = buf; })
+        .catch(() => { /* keep the synth version */ });
+    });
+  };
+  A.has = (name) => !!(buffers[name] && buffers[name].some(Boolean));
+  const pickBuf = (name) => { const l = (buffers[name] || []).filter(Boolean); return l.length ? l[Math.floor(Math.random() * l.length)] : null; };
+  // play an AudioBuffer with volume / pan / rate; returns { src, gain, pan } or null
+  function playBuf(buf, vol, rate, pan, loop) {
+    const ctx = Z.audioContext;
+    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = !!loop; src.playbackRate.value = rate || 1;
+    const g = ctx.createGain(); g.gain.value = Z.volume * vol;
+    const p = ctx.createStereoPanner ? ctx.createStereoPanner() : null; if (p) p.pan.value = pan || 0;
+    src.connect(g); if (p) { g.connect(p); p.connect(ctx.destination); } else g.connect(ctx.destination);
+    src.start();
+    return { src, gain: g, pan: p };
+  }
+  if (Z) { const kick = () => { A.loadSamples(); window.removeEventListener('pointerdown', kick); }; window.addEventListener('pointerdown', kick); }
 
   A.unlock = function () {
     if (Z && Z.audioContext.state !== 'running') Z.audioContext.resume();
@@ -52,12 +88,14 @@
   A.play = function (name, o) {
     o = o || {};
     if (!Z || A.muted || Z.audioContext.state !== 'running') return null;
-    const p = SFX[name];
-    if (!p) return null;
     const s = spatial(o.pos);
     const vol = (o.vol == null ? 1 : o.vol) * s.vol;
     if (vol < 0.03) return null;
     try {
+      const buf = pickBuf(name);
+      if (buf) return playBuf(buf, vol, o.rate || 1, s.pan, !!o.loop).src;
+      const p = SFX[name] || SFX[FALLBACK[name]];
+      if (!p) return null;
       return Z.playSamples([Z.buildSamples(...p)], vol, o.rate || 1, s.pan, !!o.loop);
     } catch (e) { return null; }
   };
@@ -95,25 +133,41 @@
     return (purrBuf = out);
   }
 
-  // looping sound with stop(); used for purring
+  // looping sound: { update(pos, rate), setVol(v), stop() }. The source is (re)created lazily, so a loop started
+  // while muted / before unlock comes alive later. Recordings are preferred (purr, tractor, crickets, fire);
+  // the purr falls back to the custom synth, other names to the ZzFX params.
   const loops = new Set();
   A.loop = function (name, o) {
-    let src = null;
-    if (name === 'purr') {
-      if (Z && !A.muted && Z.audioContext.state === 'running') {
-        const s = spatial(o && o.pos);
-        try { src = Z.playSamples([purrSamples()], 2.2 * Math.max(0.15, s.vol), 1, s.pan, true); } catch (e) { src = null; }
-      }
-    } else src = A.play(name, Object.assign({}, o, { loop: true }));
-    if (!src) return { stop() {}, setVol() {} };
+    o = o || {};
+    let src = null, gain = null, pan = null, isBuf = false, stopped = false, pos = o.pos, rate = o.rate || 1, base = o.vol == null ? 1 : o.vol;
     const h = {
-      stop() { try { src.gainNode.gain.setTargetAtTime(0, Z.audioContext.currentTime, 0.08); src.stop(Z.audioContext.currentTime + 0.4); } catch (e) { /* ended */ } loops.delete(h); },
-      setVol(v) { try { src.gainNode.gain.value = Z.volume * v; } catch (e) { /* ignore */ } },
+      ensure() {
+        if (stopped || src || !Z || A.muted || Z.audioContext.state !== 'running') return;
+        const s = spatial(pos);
+        try {
+          const buf = pickBuf(name);
+          if (buf) { const r = playBuf(buf, base * Math.max(0.1, s.vol), rate, s.pan, true); src = r.src; gain = r.gain; pan = r.pan; isBuf = true; }
+          else if (name === 'purr') { src = Z.playSamples([purrSamples()], 2.2 * Math.max(0.15, s.vol), 1, s.pan, true); }
+          else { const p = SFX[name] || SFX[FALLBACK[name]]; if (p) src = Z.playSamples([Z.buildSamples(...p)], base * Math.max(0.1, s.vol), rate, s.pan, true); }
+          if (src && !isBuf) gain = src.gainNode;
+        } catch (e) { src = null; }
+      },
+      update(p, r) {
+        if (p) pos = p; if (r) rate = r;
+        h.ensure();
+        if (!src) return;
+        const s = spatial(pos);
+        try { gain.gain.value = Z.volume * base * (name === 'purr' && !isBuf ? 2.2 : 1) * Math.max(0.08, s.vol); if (pan) pan.pan.value = s.pan; if (isBuf) src.playbackRate.value = rate; } catch (e) { /* ignore */ }
+      },
+      setVol(v) { base = v; h.update(); },
+      silence() { try { if (src) src.stop(); } catch (e) { /* ended */ } src = null; }, // muted: comes back on the next update()
+      stop() { stopped = true; try { gain.gain.setTargetAtTime(0, Z.audioContext.currentTime, 0.08); src.stop(Z.audioContext.currentTime + 0.4); } catch (e) { /* ended */ } src = null; loops.delete(h); },
     };
+    h.ensure();
     loops.add(h);
     return h;
   };
-  A.stopAll = function () { [...loops].forEach((h) => h.stop()); };
+  A.stopAll = function () { loops.forEach((h) => h.silence()); };
 
   // Animal-Crossing-like babble: one blip per syllable, pitch from the character's voice
   A.babble = function (text, voice, o) {
@@ -202,26 +256,28 @@
     const h = {
       update(pos) { if (!src) return; const s = spatial(pos); try { src.gainNode.gain.value = Z.volume * Math.max(0.25, s.vol) * 0.9; } catch (e) { /* ignore */ } },
       stop() { try { src.gainNode.gain.setTargetAtTime(0, Z.audioContext.currentTime, 0.1); src.stop(Z.audioContext.currentTime + 0.5); } catch (e) { /* ended */ } loops.delete(h); },
+      silence() { h.stop(); }, // muted mid-drive: the siren simply ends
     };
     if (src) { loops.add(h); h.update(o && o.pos); }
     return h;
   };
 
-  // ambience: birds by day, crickets on summer nights (no rain sound: it sounded bad)
-  let nextChirp = 2;
+  // ambience: birds by day (robin recordings when loaded), crickets on summer nights (looped recording, else blips)
+  let nextChirp = 2, cricketLoop = null;
   A.update = function (dt, env) {
-    if (!Z || A.muted || Z.audioContext.state !== 'running') return;
-    const wet = env.weather === 'rain';
+    if (!Z || A.muted || Z.audioContext.state !== 'running') { if (cricketLoop) { cricketLoop.stop(); cricketLoop = null; } return; }
+    const wet = env.weather === 'rain', night = env.darkness > 0.4;
+    const cricketsOn = night && NB.season === 'summer' && !wet && A.has('crickets');
+    if (cricketsOn && !cricketLoop) cricketLoop = A.loop('crickets', { vol: 0.35 });
+    if (!cricketsOn && cricketLoop) { cricketLoop.stop(); cricketLoop = null; }
+    if (cricketLoop) cricketLoop.update();
     nextChirp -= dt;
     if (nextChirp <= 0) {
-      nextChirp = NB.rr(1.5, 6);
-      const night = env.darkness > 0.4;
+      nextChirp = NB.rr(2, 7);
       if (!night && !wet && NB.season !== 'winter') {
-        const k = NB.ri(1, 3);
-        for (let i = 0; i < k; i++) setTimeout(() => A.play('chirp', { vol: 0.8, rate: NB.rr(0.8, 1.3) }), i * 140);
-      } else if (night && NB.season === 'summer' && !wet) {
-        A.play('cricket', { vol: 0.8 });
-      }
+        if (A.has('chirp')) A.play('chirp', { vol: 0.45 });
+        else { const k = NB.ri(1, 3); for (let i = 0; i < k; i++) setTimeout(() => A.play('chirp', { vol: 0.8, rate: NB.rr(0.8, 1.3) }), i * 140); }
+      } else if (night && NB.season === 'summer' && !wet && !cricketLoop) A.play('cricket', { vol: 0.8 });
     }
   };
 })(window.NB);

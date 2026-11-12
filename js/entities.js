@@ -8,13 +8,31 @@
   const say = (who, text, o) => NB.UI && NB.UI.say(who, text, o);
   const angleLerp = (a, b, t) => { let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI; if (d < -Math.PI) d += Math.PI * 2; return a + d * t; };
   // place a sprite record at world (x, y, z); depth-sorted against buildings
-  function place(e, rec, x, y, z) {
+  function place(e, rec, x, y, z, zBias) {
     const p = I.project(x, y, z), s = e.sprite;
     e.frame = rec;
     if (s.texture !== rec.tex) s.texture = rec.tex;
     s.x = Math.round(p[0]) - rec.ox; s.y = Math.round(p[1]) - rec.oy;
-    s.zIndex = NB.world.zkey(x, z);
+    s.zIndex = NB.world.zkey(x, z) + (zBias || 0);
   }
+  // ---- spots: villagers claim a place so they don't stand on top of each other ----
+  const claimed = new Map(); // key -> villager
+  function claimSpot(v, place) {
+    releaseSpot(v);
+    const named = map.spots && map.spots[place];
+    if (named) {
+      const free = named.filter((sp) => !claimed.has(sp));
+      if (free.length) { const pool = free.filter((q) => q.sit && !q.bench).length ? free.filter((q) => q.sit && !q.bench) : free.some((q) => q.sit) ? free.filter((q) => q.sit) : free; const sp = NB.pick(pool); claimed.set(sp, v); v.spot = sp; v.spotKey = sp; return sp; }
+    }
+    for (let k = 0; k < 8; k++) {
+      const t = map.randomIn(place, v.cost);
+      if (!t) return null;
+      const key = 'c:' + Math.round(t.x) + ',' + Math.round(t.z);
+      if (!claimed.has(key) || k === 7) { claimed.set(key, v); v.spot = { x: t.x, z: t.z, sit: false }; v.spotKey = key; return v.spot; }
+    }
+    return null;
+  }
+  function releaseSpot(v) { if (v.spotKey) { if (claimed.get(v.spotKey) === v) claimed.delete(v.spotKey); v.spotKey = null; } v.spot = null; v.seated = false; }
 
   // ---------------------------------------------------------------- movement on the walk grid
   class Mover {
@@ -79,7 +97,7 @@
       const g = this.currentGoal(), home = this.home;
       this.goalKey = null; this.path = null;
       if (g.place === 'home' || g.place.startsWith('home:')) { this.target = this.homeOf(g.place) || home; this.enter(); }
-      else { const s = map.randomIn(g.place, this.cost); if (s) { this.x = s.x; this.z = s.z; } }
+      else { const s = claimSpot(this, g.place); if (s) { this.x = s.x; this.z = s.z; if (s.sit) { this.seated = true; this.heading = s.face; } } }
     }
     // ---- visitors: arrive with the car, walk back to it when it is time to go ----
     arrive(p, instant, idx) {
@@ -89,7 +107,7 @@
       this.pause = 1.5 + (idx || 0) * 0.7; this.heading = I.towardCamera;
       const line = NB.pick(this.c.arriveLines || ['Hoi zäme!']);
       say(this, line); if (NB.UI.onScreen(this)) NB.Audio.babble(line, this.c.voice, { pos: this });
-      NB.Audio.play('door', { pos: this, vol: 0.5 });
+      NB.Audio.play(this.waitForBus ? 'door' : 'cardoor', { pos: this, vol: 0.6 });
     }
     goToCar(p, waitForBus) {
       this.toCar = p; this.waitForBus = !!waitForBus; this.goalKey = null; this.path = null; this.fishing = null;
@@ -98,8 +116,8 @@
     }
     enterCar() {
       if (this.inside) { (this.inBuilding || this.home).inside.delete(this); this.inside = false; this.inBuilding = null; }
-      this.away = true; this.toCar = null; this.waitForBus = false; this.path = null; this.fishing = null; this.moving = false;
-      NB.Audio.play('door', { pos: this, vol: 0.5 });
+      NB.Audio.play(this.waitForBus ? 'door' : 'cardoor', { pos: this, vol: 0.6 });
+      this.away = true; this.toCar = null; this.waitForBus = false; this.path = null; this.fishing = null; this.moving = false; releaseSpot(this);
     }
     currentGoal() {
       const now = performance.now() / 1000;
@@ -112,7 +130,7 @@
       return { place: this.fav };
     }
     homeOf(place) { return place === 'home' ? this.home : place.startsWith('home:') ? map.buildings[place.slice(5)] : null; }
-    enter() { this.inside = true; this.path = null; const b = this.target || this.home; b.inside.add(this); this.inBuilding = b; }
+    enter() { this.inside = true; this.path = null; releaseSpot(this); const b = this.target || this.home; b.inside.add(this); this.inBuilding = b; }
     leave() {
       const b = this.inBuilding || this.home;
       b.inside.delete(this);
@@ -167,11 +185,12 @@
       const building = this.homeOf(g.place);
       if (g.place !== this.goalKey) {
         this.goalKey = g.place; this.target = building; this.path = null; this.act = g.act || null; this.fishing = null;
+        releaseSpot(this);
         if (this.inside && this.inBuilding !== building) this.leave();
         if (!this.inside) {
           if (building) this.goTo(building.entryPt.x, building.entryPt.z);
           else if (g.pt) this.goTo(g.pt.x, g.pt.z);
-          else { const t = map.randomIn(g.place, this.cost); if (t) this.goTo(t.x, t.z); }
+          else { const t = claimSpot(this, g.place); if (t) this.goTo(t.x, t.z); }
         }
       }
       if (this.inside) return this.pose(dt);
@@ -185,8 +204,9 @@
           if (!this.fishing) this.startFishing();
           this.updateFishing(dt);
         } else {
+          if (this.spot && this.spot.sit && !this.seated && Math.hypot(this.x - this.spot.x, this.z - this.spot.z) < 1.2) { this.seated = true; this.heading = this.spot.face; this.wait = NB.rr(60, 180); }
           this.wait -= dt;
-          if (this.wait <= 0) { this.wait = NB.rr(3, 12); const t = map.randomIn(g.place, this.cost); if (t) this.goTo(t.x, t.z); }
+          if (this.wait <= 0) { this.wait = NB.rr(3, 12); const t = claimSpot(this, g.place); if (t) this.goTo(t.x, t.z); }
           this.chatCd -= dt;
           if (this.chatCd <= 0) { this.chatCd = NB.rr(25, 60); this.chat(); }
         }
@@ -197,11 +217,13 @@
       const s = this.sprite;
       s.visible = !this.inside && !this.away;
       if (this.inside || this.away) return;
+      if (this.moving) this.seated = false;
       this.shown = angleLerp(this.shown, this.heading, Math.min(1, dt * 10));
       const f = I.facing(this.shown);
       const view = f === 's' || f === 'se' || f === 'sw' ? 'down' : f === 'n' || f === 'ne' || f === 'nw' ? 'up' : f === 'e' ? 'right' : 'left';
       let rec;
-      if (this.pause > 0 && this.hop <= 0 && view === 'down') rec = this.frames.wave[Math.floor(performance.now() / 220) % 2]; // wave
+      if (this.seated && this.frames.sit && this.pause <= 0) rec = this.frames.sit[view];
+      else if (this.pause > 0 && this.hop <= 0 && view === 'down') rec = this.frames.wave[Math.floor(performance.now() / 220) % 2]; // wave
       else rec = this.frames[view][this.moving ? [1, 0, 2, 0][Math.floor(this.anim * 7) % 4] : 0];
       place(this, rec, this.x, this.hopY(), this.z);
     }
@@ -293,6 +315,12 @@
     }
     update(dt) {
       if (this.state === 'zoom') { this.updateZoomies(dt); return this.pose(dt); }
+      if (this.state === 'ride') {
+        const d = this.ride; this.rideT -= dt;
+        if (!d || d.away || d.done || this.rideT <= 0 || this.purrT > 0 || this.held) { this.dismount(); return this.pose(dt); }
+        this.x = d.x; this.z = d.z; this.dir = d.dir; this.heading = d.heading;
+        return this.pose(dt);
+      }
       if (this.purrT > 0 || this.held) {
         this.purrT -= dt; this.state = 'sit';
         this.heartT = (this.heartT || 0) - dt;
@@ -304,7 +332,9 @@
       this.timer -= dt;
       if (this.timer <= 0) {
         const r = Math.random();
-        if (r < this.sleepy()) { this.state = 'sleep'; this.timer = NB.rr(20, 60); }
+        const dog = this.a.dogs && NB.Env.darkness < 0.6 ? E.list.find((o) => o.kind === 'dog' && !o.away && !o.rider && Math.hypot(o.x - this.x, o.z - this.z) < 7) : null;
+        if (dog && r < 0.35) { this.mount(dog); }
+        else if (r < this.sleepy()) { this.state = 'sleep'; this.timer = NB.rr(20, 60); }
         else if (r < 0.6) {
           const t = map.randomIn(this.area, this.cost);
           if (t && Math.hypot(t.x - this.x, t.z - this.z) < 30 && this.goTo(t.x, t.z)) this.state = 'walk';
@@ -313,8 +343,24 @@
       }
       this.pose(dt);
     }
+    // ---- riding on a dog's back (Luna and Mina love Mariana's dogs) ----
+    mount(dog) {
+      this.ride = dog; dog.rider = this; this.state = 'ride'; this.rideT = NB.rr(15, 40); this.path = null;
+      this.speak('Mrrp!'); NB.Audio.play('mrr', { pos: this, rate: 1.3 });
+      NB.UI.fx(this.x, 0.2, this.z, 'dust', { vy: 0.4, life: 0.5 });
+      say(dog, NB.pick(['Wuff?!', '…wuff.', 'Hmpf.']), { quiet: true });
+      const o = dog.owner;
+      if (o && !o.inside && !o.away && Math.hypot(o.x - this.x, o.z - this.z) < 12) say(o, NB.pick([`¡No manches! D'${this.name} ridet uf em ${dog.name}!`, `${dog.name}, du bisch es Taxi. Geil.`, `${this.name}, abe vom ${dog.name}! …okay, bliib.`]), { quiet: true });
+    }
+    dismount() {
+      const d = this.ride;
+      if (d) { d.rider = null; this.x = d.x + NB.rr(-0.8, 0.8); this.z = d.z + 0.7; }
+      this.ride = null; this.state = 'sit'; this.timer = NB.rr(3, 8);
+      NB.UI.fx(this.x, 0.15, this.z, 'dust', { vy: 0.4, life: 0.5 });
+    }
     // ---- zoomies: sprint in zig-zags around the spot, hop, kick up dust, then sit down proud ----
     startZoomies() {
+      if (this.ride) this.dismount();
       this.state = 'zoom'; this.zoomT = NB.rr(5, 7); this.path = null; this.dustT = 0;
       this.zoomHome = { x: this.x, z: this.z };
       this.speed = 7;
@@ -345,6 +391,7 @@
       const hop = zoom ? Math.abs(Math.sin(this.anim * 16)) * 0.12 + (this.hopT > 0 ? Math.sin((this.hopT / 0.3) * Math.PI) * 0.6 : 0) : 0;
       if (moving) { const f = I.facing(this.heading); if (f === 'e' || f === 'se' || f === 'ne') this.dir = 'right'; else if (f === 'w' || f === 'sw' || f === 'nw') this.dir = 'left'; }
       const F = this.frames;
+      if (this.state === 'ride') { place(this, F.sit[this.dir], this.x, 0.6, this.z, 1); return; }
       const set = moving ? F.walk[Math.floor(this.anim * (zoom ? 14 : 6)) % 2] : this.state === 'sleep' ? F.sleep : F.sit;
       place(this, set[this.dir], this.x, hop, this.z);
     }
@@ -352,6 +399,7 @@
       const now = performance.now() / 1000;
       const again = now - this.lastClick < 3;
       this.clicks = again ? this.clicks + 1 : 0; this.lastClick = now;
+      if (this.state === 'ride') { this.speak(NB.pick(['Miau! (vo do obe)', 'Mrrrp.', 'Miau?'])); NB.Audio.play('meow', { pos: this, rate: this.a.voice || 1 }); return; }
       if (this.a.zoomies && this.state !== 'sleep') { if (this.state !== 'zoom') this.startZoomies(); else this.zoomT += 1.5; return; }
       if (this.state === 'sleep') { this.state = 'sit'; this.timer = NB.rr(4, 8); this.speak('Mrrr?'); NB.Audio.play('mrr', { pos: this }); }
       else if (again) this.startPurr(2.8);
@@ -388,6 +436,82 @@
     holdStart() { this.held = true; this.startPurr(1); return true; }
     holdEnd() { this.held = false; this.purrT = Math.max(this.purrT, 0.6); }
     get visible() { return true; }
+    top() { return { x: this.x, y: 1.1, z: this.z }; }
+  }
+
+  // ---------------------------------------------------------------- dogs (Mariana's Border Collies)
+  // Follow their owner: one on each side a step behind, trotting / running to keep up, straight line when the way is
+  // clear, A* otherwise. Wait lying at the door while she is indoors; away (invisible) when she is away.
+  class Dog extends Mover {
+    constructor(a, owner) {
+      super(owner.x, owner.z, map.walkCost, 2.4);
+      this.a = a; this.kind = 'dog'; this.name = a.name; this.owner = owner; this.side = a.side || 1;
+      this.frames = NB.Models.dog(a.look || {}); this.sprite = new PIXI.Sprite(); this.dir = 'right';
+      this.away = true; this.idleT = 0; this.replanT = 0; this.rider = null; this.barkT = NB.rr(20, 60); this.hopT = 0;
+      this.sprite.visible = false;
+    }
+    clear(x0, z0, x1, z1) { // straight line free of buildings / water?
+      const d = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(d);
+      for (let i = 1; i <= n; i++) { const t = i / n, x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t; if (map.inBuilding(x, z, 0.5) || map.pondDist(x, z) < 0.8) return false; }
+      return true;
+    }
+    update(dt) {
+      const o = this.owner;
+      if (this.hopT > 0) this.hopT -= dt;
+      if (o.away) { if (!this.away) { this.away = true; this.sprite.visible = false; } return; }
+      if (this.away) { this.away = false; this.x = o.x + NB.rr(-1, 1) + this.side; this.z = o.z + 1.2; this.path = null; }
+      let tx, tz, slack = 1.3;
+      if (o.inside) {
+        const b = o.inBuilding || o.home, t = [-b.doorN[1], b.doorN[0]];
+        tx = b.entryPt.x + b.doorN[0] * 1.6 + t[0] * this.side * 1.3; tz = b.entryPt.z + b.doorN[1] * 1.6 + t[1] * this.side * 1.3; slack = 0.9;
+      } else {
+        const hx = Math.sin(o.heading), hz = Math.cos(o.heading);
+        tx = o.x - hx * 1.1 + hz * this.side * 1.1; tz = o.z - hz * 1.1 - hx * this.side * 1.1;
+      }
+      const dx = tx - this.x, dz = tz - this.z, d = Math.hypot(dx, dz);
+      const far = Math.hypot(o.x - this.x, o.z - this.z);
+      if (d > (this.moving ? 0.5 : slack + 1.2)) {
+        this.speed = far > 9 ? 4.2 : o.fled ? 3.6 : 2.4;
+        if (this.clear(this.x, this.z, tx, tz)) {
+          this.path = null;
+          const step = Math.min(d, this.speed * dt);
+          this.x += (dx / d) * step; this.z += (dz / d) * step; this.heading = Math.atan2(dx, dz); this.moving = true; this.anim += dt;
+        } else {
+          this.replanT -= dt;
+          if (!this.path && this.replanT <= 0) {
+            this.replanT = 1.2;
+            if (!this.goTo(tx, tz) && !this.goTo(o.x, o.z)) { // no path (target on the table, in a wall...): squeeze straight through
+              const step = Math.min(d, this.speed * dt * 8); this.x += (dx / d) * step; this.z += (dz / d) * step; this.heading = Math.atan2(dx, dz);
+            }
+          }
+          if (this.path) { if (this.stepPath(dt)) this.moving = false; } else this.moving = false;
+        }
+        this.idleT = 0;
+      } else {
+        this.moving = false; this.idleT += dt;
+        if (far > 25 && !o.inside) { this.x = o.x + this.side; this.z = o.z + 1; } // lost her (teleport in a car etc.)
+        if (this.idleT > 1.5) this.heading = o.inside ? Math.atan2(-this.side, 1) : Math.atan2(o.x - this.x, o.z - this.z);
+      }
+      this.barkT -= dt;
+      if (this.barkT <= 0) { this.barkT = NB.rr(25, 90); if (NB.UI.onScreen(this) && !o.fishing) { say(this, 'Wuff!', { quiet: true, life: 1.5 }); NB.Audio.play('bark', { pos: this, vol: 0.6, rate: this.a.voice || 1 }); } }
+      this.pose(dt);
+    }
+    pose(dt) {
+      this.sprite.visible = !this.away;
+      if (this.away) return;
+      if (this.moving) { const f = I.facing(this.heading); if (f === 'e' || f === 'se' || f === 'ne') this.dir = 'right'; else if (f === 'w' || f === 'sw' || f === 'nw') this.dir = 'left'; }
+      const F = this.frames;
+      const set = this.moving ? F.walk[Math.floor(this.anim * (this.speed > 3 ? 9 : 6)) % 2] : this.idleT < 5 ? F.stand : this.idleT < 14 ? F.sit : F.lie;
+      const hop = this.hopT > 0 ? Math.sin((this.hopT / 0.3) * Math.PI) * 0.35 : 0;
+      place(this, set[this.dir], this.x, hop, this.z);
+    }
+    click() {
+      say(this, NB.pick(this.a.clicks || ['Wuff!']));
+      NB.Audio.play('bark', { pos: this, rate: this.a.voice || 1 });
+      this.hopT = 0.3; this.idleT = 0;
+      if (this.rider) this.rider.dismount();
+    }
+    get visible() { return !this.away; }
     top() { return { x: this.x, y: 1.1, z: this.z }; }
   }
 
@@ -506,7 +630,7 @@
       const p = this.pts[this.i];
       if (!p) {
         if (this.parkAt && !this.departing) { this.parked = true; this.speed = 0; this.heading = this.parkAt.heading; return this.pose(dt); }
-        this.done = true; NB.world.remove(this.sprite); return;
+        this.done = true; stopEngine(this); NB.world.remove(this.sprite); return;
       }
       if (this.stopT > 0) { this.stopT -= dt; if (this.stopT <= 0 && NB.UI.onScreen(this) && NB.Env.darkness < 0.7) NB.Audio.horn({ pos: this }); return this.pose(dt); }
       const dx = p.x - this.x, dz = p.z - this.z, d = Math.hypot(dx, dz);
@@ -528,7 +652,7 @@
       this.blockedT = this.speed < 0.3 ? (this.blockedT || 0) + dt : 0;
       if (this.type === 'firetruck') { /* emergency: others get out of the way */ }
       else if (this.blockedT < 6) for (const o of E.list) {
-        if (o === this || o.parked || (o.kind !== 'vehicle' && !(o.kind === 'villager' && !o.inside && !o.away) && o.kind !== 'cat')) continue;
+        if (o === this || o.parked || (o.kind !== 'vehicle' && !(o.kind === 'villager' && !o.inside && !o.away) && o.kind !== 'cat' && !(o.kind === 'dog' && !o.away))) continue;
         const ox = o.x - this.x, oz = o.z - this.z;
         const ahead = (ox * dx + oz * dz) / (d || 1), side = Math.abs(ox * dz - oz * dx) / (d || 1);
         if (ahead > 0 && ahead < 14 && side < 2) target = Math.min(target, Math.max(0, (ahead - (o.kind === 'vehicle' ? 8 : 3.5)) * 1.5));
@@ -547,9 +671,9 @@
       this.sprite.alpha = Math.min(1, this.life / 0.8, left < 2 && !arriving ? Math.max(0, left / 2) : 1);
     }
     click() {
-      if (this.lines) { say(this, NB.pick(this.lines)); NB.Audio.play('honk', { pos: this, rate: 1.35, vol: 0.6 }); }
+      if (this.lines) { say(this, NB.pick(this.lines)); NB.Audio.play(this.type === 'mini' ? 'honkMini' : 'honkTruck', { pos: this, rate: this.type === 'mini' ? 1.35 : 1, vol: 0.7 }); }
       else if (this.type === 'bus') { say(this, NB.pick(['Tü-ta-to! 🎺', 'Nöchsti Halt: Nesselnbach, Mitteldorf.', 'Bitte iistiige!'])); NB.Audio.horn({ pos: this }); }
-      else if (this.type === 'tractor') { say(this, NB.pick(TRACTOR_LINES[NB.season] || TRACTOR_LINES.summer)); NB.Audio.play('honk', { pos: this, rate: 0.7 }); }
+      else if (this.type === 'tractor') { say(this, NB.pick(TRACTOR_LINES[NB.season] || TRACTOR_LINES.summer)); NB.Audio.play('honkTractor', { pos: this, rate: 0.7 }); }
       else { say(this, NB.pick(['Tüüt tüüt!', 'Ich ha\'s pressant!', 'Langsam dur s\'Dorf, gäll!'])); NB.Audio.play('honk', { pos: this }); }
     }
     get visible() { return true; }
@@ -557,11 +681,17 @@
   }
   // diesel putter while the tractor is on screen (overlapping short engine samples)
   function tractorNoise(t, dt, rate) {
+    if (NB.Audio.has('tractor')) { // real engine loop that follows the tractor
+      if (!t.engine) t.engine = NB.Audio.loop('tractor', { pos: t, vol: 0.5, rate: rate || 1 });
+      else t.engine.update(t, rate || 1);
+      return;
+    }
     t.putT -= dt;
     if (t.putT > 0) return;
     t.putT = 0.55;
     if (NB.UI.onScreen(t)) NB.Audio.play('engine', { pos: t, vol: 0.2, rate: rate || 1 });
   }
+  const stopEngine = (t) => { if (t.engine) { t.engine.stop(); t.engine = null; } };
 
   // ---------------------------------------------------------------- tractor working a field
   // Drives a block of rows (map.fieldLanes) back and forth, kicks up dust, then fades out at the last row.
@@ -577,7 +707,7 @@
       this.life += dt;
       if (this.leaving) {
         this.fade -= dt * 0.7;
-        if (this.fade <= 0) { this.done = true; NB.world.remove(this.sprite); return; }
+        if (this.fade <= 0) { this.done = true; stopEngine(this); NB.world.remove(this.sprite); return; }
         return this.pose(dt);
       }
       if (this.pauseT > 0) { this.pauseT -= dt; tractorNoise(this, dt, 0.8); return this.pose(dt); }
@@ -608,7 +738,7 @@
     }
     click() {
       say(this, NB.pick(TRACTOR_LINES[NB.season] || TRACTOR_LINES.summer));
-      NB.Audio.play('honk', { pos: this, rate: 0.7 });
+      NB.Audio.play('honkTractor', { pos: this, rate: 0.7 });
       this.pauseT = 2.5; // the farmer stops for a chat
     }
     get visible() { return true; }
@@ -678,8 +808,8 @@
       NB.UI.fx(x, b.top.y * NB.rr(0.5, 1.0), z, 'fire', { vy: NB.rr(0.8, 1.6), life: NB.rr(0.5, 0.9), size: F.intensity });
       if (Math.random() < 0.5) NB.UI.fx(x, b.top.y * NB.rr(0.9, 1.1), z, 'smoke', { vy: NB.rr(1.5, 2.5), life: NB.rr(2.5, 4), size: F.intensity });
     }
-    F.crackleT = (F.crackleT || 0) - dt;
-    if (F.crackleT <= 0 && F.intensity > 0) { F.crackleT = 0.5; NB.Audio.play('fire', { pos: b.top, vol: 0.5 * F.intensity + 0.1 }); }
+    if (F.intensity > 0) { if (!F.crackle) F.crackle = NB.Audio.loop('fire', { pos: b.top, vol: 0.9 }); F.crackle.setVol(0.25 + 0.75 * F.intensity); F.crackle.update(b.top); }
+    else if (F.crackle) { F.crackle.stop(); F.crackle = null; }
     if (b.sprite) b.sprite.tint = F.intensity > 0 ? (Math.floor(F.t * 8) % 2 ? 0xffb070 : 0xff9050) : 0x6e6a66;
     // the engine: siren while driving, crew out when parked
     const T = F.truck;
@@ -810,6 +940,7 @@
     });
     (NB.Data.animals || []).filter((a) => a.kind === 'cat').forEach((a) => add(new Cat(a)));
     if (map.water.length) (NB.Data.animals || []).filter((a) => a.kind === 'duck').forEach((a) => add(new Duck(a)));
+    (NB.Data.animals || []).filter((a) => a.kind === 'dog').forEach((a) => { const o = E.list.find((e) => e.kind === 'villager' && e.c.id === a.owner); if (o) add(new Dog(a, o)); });
   };
   E.spawnFieldTractor = spawnFieldTractor; // for tests / the console
   E.visits = visits;

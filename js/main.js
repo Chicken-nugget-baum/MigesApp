@@ -499,11 +499,11 @@
       const who = [...b.inside].map((v) => v.name).join(' und ');
       const late = NB.inWindow(NB.clock.minutes(), '22:00', '06:30');
       text = b.kind === 'dairy' ? `${who} ${b.inside.size > 1 ? 'sind' : 'isch'} am Chäse. 🧀` : late ? `Psst! ${who} schloft${b.inside.size > 1 ? 'e' : ''}. 💤` : `${who} ${b.inside.size > 1 ? 'sind' : 'isch'} dihei. Klopf klopf!`;
-      NB.Audio.play(b.kind === 'dairy' ? 'clink' : 'door', { pos: b.top });
+      NB.Audio.play(b.kind === 'dairy' ? 'clink' : 'knock', { pos: b.top });
     } else {
       const n = clickCount.get(b) || 0; clickCount.set(b, n + 1);
       text = b.occupants.length && b.kind === 'house' ? 'Niemer dihei.' : b.lines[n % b.lines.length];
-      if (b.sound === 'bell') NB.Audio.bell({ pos: b.top }); else NB.Audio.play(b.sound || 'door', { pos: b.top });
+      if (b.sound === 'bell') NB.Audio.bell({ pos: b.top }); else NB.Audio.play(b.sound === 'door' ? 'knock' : b.sound || 'knock', { pos: b.top });
     }
     NB.UI.say(b.top, text);
   }
