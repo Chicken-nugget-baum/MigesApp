@@ -11,7 +11,8 @@
   const c = Math.cos(YAW), s = Math.sin(YAW);
   const OUT = (I.OUT = '#2a2030');
 
-  if (window.PIXI) PIXI.TextureSource.defaultOptions.scaleMode = 'nearest';
+  // crisp pixels when magnified, smooth (mipmapped) when the overview zoom shrinks sprites below 1:1
+  if (window.PIXI) Object.assign(PIXI.TextureSource.defaultOptions, { scaleMode: 'nearest', magFilter: 'nearest', minFilter: 'linear', mipmapFilter: 'linear', autoGenerateMipmaps: true });
 
   // world (x, z) -> rotated ground frame (u, v): u = screen down-right, v = screen down-left
   I.rot = (x, z) => [x * c - z * s, x * s + z * c];

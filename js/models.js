@@ -25,11 +25,11 @@
   //    face ('u'|'v' = the visible face with the door), doorUV [u, v] }
   M.house = function (b, i) {
     const m = I.model();
-    const small = b.kind === 'garage', chapel = b.kind === 'chapel', barnKind = b.kind === 'barn';
+    const small = b.kind === 'garage', chapel = b.kind === 'chapel', barnKind = b.kind === 'barn', dairy = b.kind === 'dairy';
     const homey = b.kind === 'house' || b.kind === 'farmhouse';
     const floorH = 2.8;
-    const H = small ? 2.6 : barnKind ? 4.8 : chapel ? 5.5 : b.levels * floorH + 0.4;
-    const wall = chapel ? '#fbf8f2' : small ? '#d9d2c6' : barnKind ? '#c99a6b' : WALLS[i % WALLS.length];
+    const H = small ? 2.6 : barnKind ? 4.8 : chapel ? 5.5 : dairy ? Math.max(4.8, b.levels * floorH + 0.9) : b.levels * floorH + 0.4;
+    const wall = chapel ? '#fbf8f2' : small ? '#d9d2c6' : barnKind ? '#c99a6b' : dairy ? '#f6f3ec' : WALLS[i % WALLS.length];
     const WOOD = '#b07a4a', PLANK = '#8f5f36';
     const roofCol = P.snow ? (i % 3 ? '#f4f7fb' : '#e9eef5') : b.roofColor || (chapel ? '#6f7486' : ROOFS[(i * 3) % ROOFS.length]);
     const parts = (b.parts && b.parts.length ? b.parts : [{ u: 0, v: 0, w: b.w, d: b.d }]).map((p) => ({ ...p, w: Math.max(1.5, p.w), d: Math.max(1.5, p.d) }));
@@ -60,7 +60,11 @@
       if (barn) { // vertical planks on the visible faces
         for (let t = 0.6; t < p.d; t += 1.2) if (!insideOther(p, p.u + p.w / 2 + 0.2, v0 + t)) m.box(p.u + p.w / 2, v0 + t - 0.05, 0.1, 0.05, 0.1, H - 0.2, PLANK, { noOutline: true });
         for (let t = 0.6; t < p.w; t += 1.2) if (!insideOther(p, u0 + t, p.v + p.d / 2 + 0.2)) m.box(u0 + t - 0.05, p.v + p.d / 2, 0.1, 0.1, 0.05, H - 0.2, PLANK, { noOutline: true });
-      } else if (homey || b.kind === 'beiz') m.box(u0 - 0.08, v0 - 0.08, 0, p.w + 0.16, p.d + 0.16, 0.6, '#b9b0a6');
+      } else if (homey || b.kind === 'beiz' || dairy) m.box(u0 - 0.08, v0 - 0.08, 0, p.w + 0.16, p.d + 0.16, 0.6, dairy ? '#9aa3ad' : '#b9b0a6');
+      if (dairy) { // light-blue band under the eaves on the visible faces
+        m.box(p.u + p.w / 2 + 0.02, v0, H - 0.9, 0.04, p.d, 0.45, '#7fb6e0', { noOutline: true });
+        m.box(u0, p.v + p.d / 2 + 0.02, H - 0.9, p.w, 0.04, 0.45, '#7fb6e0', { noOutline: true });
+      }
       if (!b.oneRoof) {
         const over = small ? 0.25 : 0.6;
         m.gable(u0 - over, v0 - over, H, p.w + over * 2, p.d + over * 2, rh, p.w >= p.d ? 'u' : 'v', roofCol);
@@ -71,9 +75,9 @@
       const levels = chapel || barnKind ? 1 : b.levels;
       for (const axis of ['u', 'v']) {
         const len = axis === 'u' ? p.d : p.w, f = axis === 'u' ? p.u + p.w / 2 : p.v + p.d / 2, c0 = axis === 'u' ? v0 : u0;
-        const n = Math.max(1, Math.floor((len - 1.2) / (barnKind ? 5 : 3.1)));
+        const n = Math.max(1, Math.floor((len - 1.2) / (barnKind ? 5 : dairy ? 3.6 : 3.1)));
         for (let lv = 0; lv < levels; lv++) {
-          const y = chapel ? 2.8 : barnKind ? 2.4 : 1.6 + lv * floorH;
+          const y = chapel ? 2.8 : barnKind ? 2.4 : dairy ? (lv === 0 ? 2.6 : 2.1 + lv * floorH) : 1.6 + lv * floorH;
           for (let k = 0; k < n; k++) {
             const q = c0 + ((k + 0.5) * len) / n;
             if (axis === 'u' ? insideOther(p, f + 0.3, q) : insideOther(p, q, f + 0.3)) continue; // face is inside another block
@@ -101,11 +105,35 @@
     if (!small && homey && i % 3 !== 2) { const p = parts[0]; m.cbox(p.u + p.w * 0.2, p.v - p.d * 0.15, top - 1.2, 0.7, 0.7, 1.6, '#a8604c', b.oneRoof ? { key: 2e6 } : undefined); }
 
     // door on the street-facing visible face, in line with the main block
-    const doorCol = small || barnKind ? '#e4e0d8' : chapel ? '#7a4a2a' : DOORS[i % DOORS.length];
+    const doorCol = small || barnKind ? '#e4e0d8' : chapel ? '#7a4a2a' : dairy ? '#7f8c99' : DOORS[i % DOORS.length];
     const mainLen = doorAxis === 'u' ? parts[0].d : parts[0].w;
-    const dw = small || barnKind ? Math.min(2.6, mainLen - 0.6) : 1.1, dh = small || barnKind ? 2.2 : 2.1;
-    onFace(doorAxis, doorF, doorP, 0, 0, 0, 0.12, dw, dh, doorCol);
-    if (!small && !barnKind) {
+    const dw = small || barnKind ? Math.min(2.6, mainLen - 0.6) : dairy ? 3.2 : 1.1, dh = small || barnKind ? 2.2 : dairy ? 2.8 : 2.1;
+    onFace(doorAxis, doorF, doorP, 0, 0, dairy ? 0.9 : 0, 0.12, dw, dh, doorCol);
+    let steam = null;
+    if (dairy) {
+      // roll door slats, loading ramp with milk churns and crates, blue sign, steel milk tank, chimney
+      for (let y = 1.3; y < 3.5; y += 0.5) onFace(doorAxis, doorF, doorP, 0.1, 0, y, 0.04, 3.0, 0.08, '#5f6b78', { noOutline: true });
+      onFace(doorAxis, doorF, doorP, 0, 0, 0, 1.8, 5.2, 0.9, '#aeb5bd');
+      onFace(doorAxis, doorF, doorP, 0.3, -1.6, 0.9, 0.52, 0.52, 0.85, '#d2d6db');
+      onFace(doorAxis, doorF, doorP, 0.3, -1.0, 0.9, 0.52, 0.52, 0.85, '#d2d6db');
+      onFace(doorAxis, doorF, doorP, 0.35, -1.6, 1.75, 0.42, 0.42, 0.12, '#9aa3ad', { noOutline: true });
+      onFace(doorAxis, doorF, doorP, 0.35, -1.0, 1.75, 0.42, 0.42, 0.12, '#9aa3ad', { noOutline: true });
+      onFace(doorAxis, doorF, doorP, 0.3, 1.5, 0.9, 0.6, 0.6, 0.35, '#e8c23a');
+      onFace(doorAxis, doorF, doorP, 0.3, 1.5, 1.25, 0.6, 0.6, 0.35, '#3b7fb0');
+      onFace(doorAxis, doorF, doorP, 0, 0, H - 2.1, 0.16, 4.6, 0.9, '#2f6fb5');
+      onFace(doorAxis, doorF, doorP, 0.16, 0, H - 1.85, 0.06, 3.6, 0.4, '#ffffff', { noOutline: true });
+      const p0 = parts[0], tu = p0.u + p0.w / 2 + 1.7, tv = p0.v - p0.d / 2 + 2.2; // milk tank at the +u end, a bit back
+      m.cbox(tu, tv, 0, 2.2, 2.2, 5.6, '#d8dde3');
+      m.cbox(tu, tv, 1.6, 2.26, 2.26, 0.14, '#aab2bb', { noOutline: true });
+      m.cbox(tu, tv, 3.8, 2.26, 2.26, 0.14, '#aab2bb', { noOutline: true });
+      m.pyramid(tu - 1.2, tv - 1.2, 5.6, 2.4, 2.4, 0.9, '#c3c9d0');
+      m.cbox(tu + 1.14, tv, 0.2, 0.08, 0.5, 5.2, '#6b737c', { noOutline: true });
+      const cu = p0.u - p0.w * 0.28, cv = p0.v + p0.d * 0.12; // chimney through the roof
+      m.cbox(cu, cv, top - 1.2, 0.9, 0.9, 3.4, '#8a8f99', { key: 2e6 });
+      m.cbox(cu, cv, top + 2.1, 1.1, 1.1, 0.16, '#5f6670', { noOutline: true, key: 2e6 });
+      const w = I.unrot(cu, cv); steam = [w[0], w[1], top + 2.4];
+    }
+    if (!small && !barnKind && !dairy) {
       onFace(doorAxis, doorF, doorP, 0, 0, 0, 0.6, 1.6, 0.18, '#c9c0b6');
       onFace(doorAxis, doorF, doorP, 0.1, 0.32, 1.0, 0.1, 0.12, 0.12, '#f2c23a', { noOutline: true });
     }
@@ -126,7 +154,7 @@
       bellTop = th + 1; top = th + 4;
     }
     const r = m.render();
-    r.height = top; r.bellTop = bellTop;
+    r.height = top; r.bellTop = bellTop; r.steam = steam;
     return r;
   };
 
@@ -298,6 +326,32 @@
       m.cbox(0, 5.03, 1.5, 2.3, 0.06, 1.2, '#2b3d55', { noOutline: true });
       m.cbox(0, 0, 3.0, 2.3, 9.6, 0.2, '#f2f2ea');
       [-0.8, 0.8].forEach((x) => m.cbox(x, 5.04, 0.8, 0.4, 0.06, 0.2, '#fff8c0', { noOutline: true, light: '#fff2a0' }));
+    } else if (type === 'firetruck') {
+      // fire engine: red body, white stripe, ladder on the roof, blue light
+      m.shadow(-1.25, -4, 2.5, 8, 2.8);
+      [[-1.1, 2.6], [1.1, 2.6], [-1.1, -2.2], [1.1, -2.2]].forEach(([x, z]) => wheel(x, z, 0.5));
+      m.cbox(0, 0, 0.5, 2.4, 7.8, 2.4, color);
+      panels(0, 0, 1.25, 2.4, 7.8, 0.3, '#f4f4f0');
+      panels(0, 2.4, 1.9, 2.4, 2.4, 0.9, '#2b3d55');
+      m.cbox(0, 3.92, 2.0, 2.2, 0.06, 0.9, '#2b3d55', { noOutline: true });
+      m.cbox(0, 0, 2.9, 2.3, 7.6, 0.2, '#e03a3a');
+      m.cbox(0, -1.0, 3.1, 0.9, 5.6, 0.25, '#b9c0c8');
+      [-0.3, 0.3].forEach((x) => m.cbox(x, -1.0, 3.35, 0.08, 5.4, 0.12, '#8a9099', { noOutline: true }));
+      m.cbox(0, 2.6, 3.1, 0.6, 0.6, 0.35, '#4f8fe8', { light: '#9ac6ff' });
+      [-0.8, 0.8].forEach((x) => m.cbox(x, 3.93, 1.0, 0.4, 0.06, 0.25, '#fff8c0', { noOutline: true, light: '#fff2a0' }));
+    } else if (type === 'tanker') {
+      // milk lorry: coloured cab, stainless tank with bands
+      m.shadow(-1.25, -4.5, 2.5, 9, 2.6);
+      [[-1.1, 3.2], [1.1, 3.2], [-1.1, -1.2], [1.1, -1.2], [-1.1, -2.6], [1.1, -2.6]].forEach(([x, z]) => wheel(x, z, 0.5));
+      m.cbox(0, -0.4, 0.5, 2.3, 8.6, 0.5, '#3a3a40');
+      m.cbox(0, 3.4, 0.6, 2.4, 2.2, 2.6, color);
+      panels(0, 3.4, 1.9, 2.4, 2.2, 1.0, '#2b3d55');
+      m.cbox(0, -1.2, 1.0, 2.2, 6.4, 2.0, '#dfe3e8');
+      m.cbox(0, -1.2, 1.7, 2.3, 6.5, 0.14, '#b9c0c8', { noOutline: true });
+      m.cbox(0, -1.2, 2.5, 2.3, 6.5, 0.14, '#b9c0c8', { noOutline: true });
+      m.cbox(0, -1.2, 3.0, 1.5, 6.0, 0.4, '#eef1f4');
+      m.cbox(0, 4.52, 2.2, 2.2, 0.06, 0.9, '#2b3d55', { noOutline: true });
+      [-0.8, 0.8].forEach((x) => m.cbox(x, 4.53, 1.0, 0.4, 0.06, 0.25, '#fff8c0', { noOutline: true, light: '#fff2a0' }));
     } else if (type === 'mini') {
       // small two-door with a white roof and yellow mirror caps (electric Mini)
       m.shadow(-0.85, -1.9, 1.7, 3.8, 1.3);

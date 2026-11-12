@@ -24,6 +24,10 @@
     engine: [0.35, 0.05, 55, 0.05, 0.6, 0.2, 2, 1, 0, 0, 0, 0, 0.04, 1, 0, 0, 0, 0.8, 0, 0.6, 400],
     chirp: [0.12, 0.3, 2600, 0.01, 0.03, 0.06, 0, 1, 30, 0, 0, 0, 0.05],
     cricket: [0.05, 0.1, 4200, 0, 0.12, 0.02, 0, 1, 0, 0, 0, 0, 0.02, 0, 0, 0, 0, 1, 0, 1],
+    fire: [0.4, 0.2, 90, 0.05, 0.4, 0.25, 4, 1, 0, 0, 0, 0, 0.06, 2.5, 0, 0, 0, 0.7, 0.05, 0.4, 900],
+    siren1: [0.5, 0, 620, 0.02, 0.45, 0.08, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 2400],
+    siren2: [0.5, 0, 465, 0.02, 0.45, 0.08, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 2400],
+    spray: [0.25, 0.1, 3000, 0.02, 0.25, 0.15, 4, 1, 0, 0, 0, 0, 0, 1.5, 0, 0, 0, 0.6, 0.05],
   };
 
   // volume/pan from a world position relative to the camera
@@ -139,9 +143,68 @@
     }, i * 300));
   };
 
+  // ---- chapel bell: a real toll (assets/sounds/bell.mp3, CC0, see assets/sounds/README.md); if the file can't be
+  // loaded (file://, offline) an additive synthesized bell (hum, prime, tierce, quint, nominal partials) is used.
+  let bellBuf = null, bellSynth = null, bellLoading = false;
+  function loadBell() {
+    if (bellBuf || bellLoading || !Z || location.protocol === 'file:') return;
+    bellLoading = true;
+    fetch('assets/sounds/bell.mp3').then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status))))
+      .then((ab) => Z.audioContext.decodeAudioData(ab)).then((buf) => { bellBuf = buf; }).catch(() => { bellLoading = false; bellBuf = null; });
+  }
+  function synthBell() {
+    if (bellSynth) return bellSynth;
+    const sr = Z.sampleRate, dur = 5.5, n = Math.round(sr * dur), out = new Float32Array(n), f0 = 392;
+    // partial: [ratio, amplitude, decay seconds]  (minor-third bell profile)
+    const P = [[0.5, 0.5, 4.5], [1, 1, 3.2], [1.19, 0.6, 1.8], [1.5, 0.4, 1.5], [2.0, 0.5, 1.1], [2.51, 0.25, 0.7], [3.0, 0.15, 0.5], [4.2, 0.08, 0.3]];
+    for (let i = 0; i < n; i++) {
+      const t = i / sr; let v = 0;
+      for (const [r, a, d] of P) v += a * Math.exp(-t / d) * Math.sin(2 * Math.PI * f0 * r * t * (1 + 0.0004 * Math.sin(t * 7)));
+      out[i] = v * Math.min(1, t * 400) * 0.28;
+    }
+    return (bellSynth = out);
+  }
   A.bell = function (o) {
-    A.play('bell', o);
-    A.play('bellHi', o);
+    o = o || {};
+    if (!Z || A.muted || Z.audioContext.state !== 'running') return;
+    const s = spatial(o.pos), vol = (o.vol == null ? 1 : o.vol) * s.vol;
+    if (vol < 0.03) return;
+    loadBell();
+    try {
+      const ctx = Z.audioContext;
+      if (bellBuf) {
+        const src = ctx.createBufferSource(); src.buffer = bellBuf; src.playbackRate.value = o.rate || 1;
+        const g = ctx.createGain(); g.gain.value = Z.volume * vol * 0.9;
+        const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null; if (pan) pan.pan.value = s.pan;
+        src.connect(g); if (pan) { g.connect(pan); pan.connect(ctx.destination); } else g.connect(ctx.destination);
+        src.start();
+      } else Z.playSamples([synthBell()], vol, o.rate || 1, s.pan);
+    } catch (e) { /* ignore */ }
+  };
+  if (Z) { const kick = () => { loadBell(); window.removeEventListener('pointerdown', kick); }; window.addEventListener('pointerdown', kick); }
+
+  // ---- emergency siren: alternating two-tone horn ("Tatü-tata"), seamless loop, follows the vehicle
+  let sirenBuf = null;
+  function sirenSamples() {
+    if (sirenBuf) return sirenBuf;
+    const sr = Z.sampleRate, cycle = 1.3, n = Math.round(sr * cycle), out = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const t = i / sr, half = t < cycle / 2, f = half ? 435 : 580, u = (half ? t : t - cycle / 2) / (cycle / 2);
+      const env = Math.min(1, u * 40, (1 - u) * 40);
+      const ph = 2 * Math.PI * f * t;
+      out[i] = (Math.sin(ph) + 0.5 * Math.sin(2 * ph) + 0.25 * Math.sin(3 * ph) + 0.12 * Math.sin(4 * ph)) * env * 0.35;
+    }
+    return (sirenBuf = out);
+  }
+  A.siren = function (o) {
+    let src = null;
+    if (Z && !A.muted && Z.audioContext.state === 'running') { try { src = Z.playSamples([sirenSamples()], 1, 1, 0, true); } catch (e) { src = null; } }
+    const h = {
+      update(pos) { if (!src) return; const s = spatial(pos); try { src.gainNode.gain.value = Z.volume * Math.max(0.25, s.vol) * 0.9; } catch (e) { /* ignore */ } },
+      stop() { try { src.gainNode.gain.setTargetAtTime(0, Z.audioContext.currentTime, 0.1); src.stop(Z.audioContext.currentTime + 0.5); } catch (e) { /* ended */ } loops.delete(h); },
+    };
+    if (src) { loops.add(h); h.update(o && o.pos); }
+    return h;
   };
 
   // ambience: birds by day, crickets on summer nights (no rain sound: it sounded bad)

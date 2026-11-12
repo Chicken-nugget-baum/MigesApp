@@ -110,11 +110,12 @@
     farmhouse: { lines: ["S'Buurehuus, Niederwilerstrasse 3.", "Links wohne, rächts d'Schüür.", "Do wohne d'Mige, d'Mina und d'Luna. 🐾", "De Joel und d'Mariana parkiere ihre Mini do, wenn si us Lenzburg cho sind."], sound: 'door' },
     barn: { lines: ['%a', 'Do schmöckt\'s nach Heu.'], sound: 'door' },
     garage: { lines: ['%a', 'Do staht s\'Velo.'], sound: 'door' },
+    dairy: { lines: ["D'Milchzentrale vo de Gehrigs – Silvia, Roman und Reto. Do wird d'Milch gsammlet und Chäs gmacht. 🧀", 'Mmh, es schmöckt nach frischem Chäs!', "Am Morge und am Abig chömed d'Buure mit de Milchkanne.", "Isch letschthin abebrönnt – jetz isch alles wider neu. Also bitte nid z'fescht klopfe!"], sound: 'clink' },
     house: { lines: ['%a', 'Do wohnt\'s sich schön.'], sound: 'door' },
   };
   S.buildings.forEach((spec, i) => {
     const l = LINES[spec.kind] || LINES.house;
-    const name = ['chapel', 'beiz', 'farmhouse'].includes(spec.kind) ? spec.name : spec.addr || spec.name || 'Huus';
+    const name = ['chapel', 'beiz', 'farmhouse', 'dairy'].includes(spec.kind) ? spec.name : spec.addr || spec.name || 'Huus';
     const info = (spec.name && spec.kind !== 'house' ? spec.name + ', ' : '') + (spec.addr || '') + (spec.year ? ', baut ' + spec.year : '') + (spec.flats > 1 ? ', ' + spec.flats + ' Wohnige' : '') + '.';
     const b = Object.assign({}, spec, {
       i, name, occupants: [], inside: new Set(),
@@ -148,12 +149,32 @@
       if (!map.inBuilding(x, z, 1.4) && map.streetDist(x, z) > 1.5) { parking = { x, z, heading: Math.atan2(t[0] * sg, t[1] * sg) }; break; }
     }
     map.farmProps = { bench: { x: bx, z: bz, heading: Math.atan2(n[0], n[1]) }, table: { x: tx, z: tz }, parking };
+    map.parkings = { mige: parking };
     map.pois.sitzplatz = [tx - 2.2, tz - 2.2, tx + 2.2, tz + 2.2];
     // the table itself is not walkable
     for (let cz = 0; cz < H; cz++) for (let cx = 0; cx < W; cx++) {
       const c = map.cellCentre(cx, cz);
       if (Math.hypot(c.x - tx, c.z - tz) < 1) { map.walkCost[cz * W + cx] = 0; map.animalCost[cz * W + cx] = 0; }
     }
+  }
+  // Milchzentrale: a parking bay for the milk lorry beside the loading door
+  const milch = map.buildings.milch;
+  if (milch) {
+    map.parkings = map.parkings || {};
+    // candidates on a ring around the building; prefer the side towards the viewer (+x +z) and near the door
+    const ca = Math.cos(milch.angle), sa = Math.sin(milch.angle);
+    let best = null;
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 12) {
+      const u = Math.cos(a) * (milch.w / 2 + 6), v = Math.sin(a) * (milch.d / 2 + 6);
+      const x = milch.cx + u * ca - v * sa, z = milch.cz + u * sa + v * ca;
+      if (x < bx0 + 5 || x > bx1 - 5 || z < bz0 + 5 || z > bz1 - 5 || map.inBuilding(x, z, 2.5) || map.streetDist(x, z) > 60 || map.streetDist(x, z) < 2) continue;
+      const score = -2 * Math.max(0, map.streetDist(x, z) - 3) + 0.4 * (x - milch.cx) - 0.3 * Math.hypot(x - milch.door[0], z - milch.door[1]); // by the street, to the right (not hidden)
+      if (!best || score > best.score) {
+        const alongU = Math.abs(Math.cos(a)) * milch.d > Math.abs(Math.sin(a)) * milch.w; // at the short ends park along v
+        best = { score, x, z, heading: alongU ? Math.atan2(-sa, ca) : Math.atan2(ca, sa) };
+      }
+    }
+    if (best) map.parkings.dairy = { x: best.x, z: best.z, heading: best.heading };
   }
   // POIs from older data that don't exist in this small scene
   const ALIAS = { casino: 'beiz', niederwil: 'niederwilerstrasse', reuss: 'kapellenweg', wald: 'kapellenweg', gnadenthal: 'kapellenweg', gartebahn: 'ifangweg', feld: 'kapellenweg', weide: 'kapellenweg', schuel: 'niederwilerstrasse' };

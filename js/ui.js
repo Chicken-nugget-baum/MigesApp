@@ -19,10 +19,10 @@
     if (o.quiet && U.bubbles.length > 6) return;
     U.bubbles.push({ owner, text, t: 0, life: o.life || NB.clamp(1.8 + text.length * 0.07, 2.5, 6) });
   };
-  // kind: heart | note | dust | ripple | fish | angry
+  // kind: heart | note | dust | ripple | fish | angry | steam | smoke | fire
   U.fx = function (x, y, z, kind, o) {
     o = o || {};
-    U.fxs.push({ x, y, z, kind, vy: o.vy || 0.8, life: o.life || 1.2, t: 0, wob: Math.random() * 6 });
+    U.fxs.push({ x, y, z, kind, vy: o.vy || 0.8, life: o.life || 1.2, t: 0, wob: Math.random() * 6, size: o.size || 1 });
   };
 
   U.update = function (dt) {
@@ -75,6 +75,13 @@
       const a = NB.clamp(1 - f.t / f.life, 0, 1);
       ctx.globalAlpha = a;
       if (f.kind === 'dust') { ctx.fillStyle = '#f3e6cc'; ctx.beginPath(); ctx.arc(p[0], p[1], 4 + f.t * 10, 0, Math.PI * 2); ctx.fill(); }
+      else if (f.kind === 'steam') { ctx.globalAlpha = a * 0.7; ctx.fillStyle = '#eef0f4'; ctx.beginPath(); ctx.arc(p[0], p[1], (2 + f.t * 3) * NB.view.zoom, 0, Math.PI * 2); ctx.fill(); }
+      else if (f.kind === 'smoke') { ctx.globalAlpha = a * 0.55; ctx.fillStyle = '#3a3538'; ctx.beginPath(); ctx.arc(p[0], p[1], (3 + f.t * 4) * f.size * NB.view.zoom, 0, Math.PI * 2); ctx.fill(); }
+      else if (f.kind === 'fire') { // flickering flame: orange blob with a yellow core
+        const r = (3 + Math.sin(f.t * 30 + f.wob) * 0.8) * (0.6 + f.size) * NB.view.zoom * (1 - f.t / f.life * 0.5);
+        ctx.globalAlpha = a; ctx.fillStyle = '#ff6a1a'; ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ffd040'; ctx.beginPath(); ctx.arc(p[0], p[1] + r * 0.2, r * 0.5, 0, Math.PI * 2); ctx.fill();
+      }
       else if (f.kind === 'ripple') { // expanding ring on the water
         const rx = (2 + f.t * 9) * NB.view.zoom; ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.ellipse(p[0], p[1], rx, rx / 2, 0, 0, Math.PI * 2); ctx.stroke();
@@ -94,6 +101,17 @@
       ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.beginPath(); ctx.moveTo(tip[0], tip[1]); ctx.lineTo(fl[0], fl[1]); ctx.stroke();
       ctx.fillStyle = '#e8463a'; ctx.beginPath(); ctx.arc(fl[0], fl[1], Math.max(2, v.zoom), 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(fl[0], fl[1] - Math.max(1, v.zoom * 0.6), Math.max(1, v.zoom * 0.6), 0, Math.PI * 2); ctx.fill();
+    }
+    // firefighters' water jets: arc from the nozzle to the target, a few droplets
+    for (const e of NB.Entities.list) {
+      const sp = e.spray;
+      if (!sp) continue;
+      const a0 = toScreen(e.x, 1.3, e.z), a1 = toScreen(sp.x, sp.y, sp.z);
+      const mx = (a0[0] + a1[0]) / 2, my = Math.min(a0[1], a1[1]) - 30 * v.zoom;
+      ctx.lineWidth = Math.max(2, v.zoom * 1.2); ctx.strokeStyle = 'rgba(170,215,255,0.9)';
+      ctx.beginPath(); ctx.moveTo(a0[0], a0[1]); ctx.quadraticCurveTo(mx, my, a1[0], a1[1]); ctx.stroke();
+      ctx.fillStyle = 'rgba(200,230,255,0.9)';
+      for (let k = 0; k < 3; k++) { const t = ((now * 1.7 + k / 3 + e.x) % 1), ix = (1 - t) * (1 - t) * a0[0] + 2 * (1 - t) * t * mx + t * t * a1[0], iy = (1 - t) * (1 - t) * a0[1] + 2 * (1 - t) * t * my + t * t * a1[1]; ctx.beginPath(); ctx.arc(ix, iy + Math.sin(k * 2.1 + now * 5) * 2, Math.max(1, v.zoom * 0.7), 0, Math.PI * 2); ctx.fill(); }
     }
     // hover name
     const h = U.hover;

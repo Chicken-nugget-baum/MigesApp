@@ -27,8 +27,9 @@
   const C = (h) => parseInt(h.slice(1), 16);
 
   let W = 1, H = 1;
-  const ZOOMS = [1, 2, 3, 4];
-  const cam = { px: 0, py: 0, zoom: NB.clamp(parseInt(NB.params.get('zoom') || '2', 10) || 2, 1, 4) }; // centre in world pixels
+  const ZOOMS = [0.5, 1, 2, 3, 4]; // 0.5 = overview (ground painted at half resolution, sprites mip-mapped)
+  const wantZoom = parseFloat(NB.params.get('zoom') || '2') || 2;
+  const cam = { px: 0, py: 0, zoom: ZOOMS.reduce((a, b) => (Math.abs(b - wantZoom) < Math.abs(a - wantZoom) ? b : a)) }; // centre in world pixels
   const start = NB.params.get('at') ? NB.params.get('at').split(',').map(Number) : [map.start.x, map.start.z];
   function setCentre(x, z) { const p = I.project(x, 0, z); cam.px = p[0]; cam.py = p[1]; }
   const startZoom = cam.zoom;
@@ -87,8 +88,9 @@
     let light = null;
     if (rec.light) { light = placeStatic({ tex: rec.light, ox: rec.ox, oy: rec.oy }, spec.cx, 0, spec.cz, z2, lights); light.alpha = 0; }
     b.top = { x: spec.cx, y: rec.height + 1, z: spec.cz };
+    b.sprite = s; // for tinting (fire / soot)
     pickables.push({ sprite: s, rec, building: b });
-    houses.push({ b, light, seed: (i * 0.6180339) % 1 });
+    houses.push({ b, light, seed: (i * 0.6180339) % 1, rec });
   });
 
   // ---------- streets as polylines (for lamps and shelters) ----------
@@ -127,6 +129,7 @@
   // ---------- lamps with ground glow ----------
   const lamps = [];
   for (const s of S.streets) {
+    if (s.kind === 'track') continue;
     const pl = polyline(s.pts);
     for (let d = 12, side = 1; d < pl.len - 4; d += 30, side = -side) {
       const p = pl.at(d), off = s.width / 2 + 1.4;
@@ -175,7 +178,7 @@
   const TM = 2, MARGIN = 240;
   const tx0 = bx0 - MARGIN, tz0 = bz0 - MARGIN;
   const tw = Math.ceil((bx1 - bx0 + MARGIN * 2) * TM), th = Math.ceil((bz1 - bz0 + MARGIN * 2) * TM);
-  const terrain = new Uint8Array(tw * th); // 0 grass, 1 sidewalk, 2 asphalt, 3 plaza, 4 grain field, 5 meadow, 6 root crops, 7 water, 8 shore
+  const terrain = new Uint8Array(tw * th); // 0 grass, 1 sidewalk, 2 asphalt, 3 plaza, 4 grain field, 5 meadow, 6 root crops, 7 water, 8 shore, 9 gravel track
   const fang = new Uint8Array(tw * th);    // furrow direction of field cells (angle bucket 0..100 = 0..180 deg)
   const CROP = { grain: 4, meadow: 5, root: 6 };
   {
@@ -204,11 +207,13 @@
       s.pts.forEach(([x, z], k) => (k ? tg.lineTo((x - tx0) * TM, (z - tz0) * TM) : tg.moveTo((x - tx0) * TM, (z - tz0) * TM)));
       tg.stroke();
     };
-    for (const s of S.streets) stroke(s, s.width + 2.4, '#ff0000');
-    for (const s of S.streets) stroke(s, s.width, '#00ff00');
+    for (const s of S.streets) if (s.kind !== 'track') stroke(s, s.width + 2.4, '#ff0000');
+    for (const s of S.streets) if (s.kind === 'track') stroke(s, s.width, '#ff00ff'); // gravel
+    for (const s of S.streets) if (s.kind !== 'track') stroke(s, s.width, '#00ff00');
     const d = tg.getImageData(0, 0, tw, th).data;
     for (let i = 0; i < terrain.length; i++) {
-      let c = d[i * 4 + 1] > 127 ? 2 : d[i * 4] > 127 ? 1 : d[i * 4 + 2] > 127 ? 3 : 0;
+      const R = d[i * 4] > 127, G = d[i * 4 + 1] > 127, B = d[i * 4 + 2] > 127;
+      let c = G ? 2 : R && B ? 9 : R ? 1 : B ? 3 : 0;
       if (!c && fd[i * 4 + 3] > 127) { c = NB.clamp(Math.round(fd[i * 4 + 1] / 30), 4, 8); fang[i] = fd[i * 4]; }
       terrain[i] = c;
     }
@@ -243,6 +248,7 @@
   const SPROUT = I.rgb('#86c86e'); // young grain in spring
   const WATER = (snow ? ['#9fc0d8', '#8ab0cc', '#c8dcea', '#7a9fbd'] : ['#4f9fd1', '#4590c2', '#9fd0ee', '#3b7fb0']).map(I.rgb); // base, dark, glint, edge
   const SHORE = (snow ? ['#e8e4da', '#d8d2c4'] : ['#d6c69a', '#c2ae7e']).map(I.rgb);
+  const GRAV = (snow ? ['#e4e1da', '#cfcbc2', '#f0eee9'] : ['#cbc2ae', '#b0a692', '#ddd5c4']).map(I.rgb); // gravel: base, stones/edge, light
   const COL = {
     g: GRASS.map(I.rgb), f: (FLOWERS || []).map(I.rgb),
     a: [ASPH, NB.shade(ASPH, 0.92), NB.shade(ASPH, 1.08), NB.shade(ASPH, 0.72)].map(I.rgb),
@@ -254,14 +260,15 @@
   let frameNo = 0;
   function hash(x, y) { let h = (x * 374761393 + y * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return (h ^ (h >>> 16)) >>> 0; }
   const [dxdx, dzdx] = I.pxToWorld(1, 0), [dxdy, dzdy] = I.pxToWorld(0, 1);
-  function paintChunk(cx, cy) {
-    const img = new ImageData(CH, CH), d = img.data;
+  // step = world pixels per texture pixel (1 normally, 2 for the 0.5x overview: same cost per screen pixel)
+  function paintChunk(cx, cy, step) {
+    const img = new ImageData(CH, CH), d = img.data, S = CH * step;
     let k = 0;
     for (let py = 0; py < CH; py++) {
-      const wy = cy * CH + py;
-      let [x, z] = I.pxToWorld(cx * CH + 0.5, wy + 0.5);
-      for (let px = 0; px < CH; px++, x += dxdx, z += dzdx, k += 4) {
-        const wx = cx * CH + px;
+      const wy = cy * S + py * step;
+      let [x, z] = I.pxToWorld(cx * S + 0.5 * step, wy + 0.5 * step);
+      for (let px = 0; px < CH; px++, x += dxdx * step, z += dzdx * step, k += 4) {
+        const wx = cx * S + px * step;
         const ti = tidx(x, z), code = ti < 0 ? 0 : terrain[ti];
         const h = hash(wx, wy), r = h & 255;
         let c;
@@ -270,6 +277,9 @@
           c = edge ? WATER[3] : (wx * 2 + wy * 5 + ((h >> 4) & 7)) % 31 < 2 && r < 90 ? WATER[2] : r < 7 ? WATER[1] : WATER[0];
         } else if (code === 8) { // sandy shore with pebbles
           c = r < 36 ? SHORE[1] : SHORE[0];
+        } else if (code === 9) { // gravel track: loose stones, darker rim
+          const edge = ter(x + dxdx, z + dzdx) !== 9 || ter(x - dxdx, z - dzdx) !== 9 || ter(x + dxdy, z + dzdy) !== 9 || ter(x - dxdy, z - dzdy) !== 9;
+          c = edge && r < 160 ? GRAV[1] : r < 34 ? GRAV[1] : r < 62 ? GRAV[2] : GRAV[0];
         } else if (code >= 4) {
           const pal = FCOL[code], n = FROW[fang[ti]], v = x * n[0] + z * n[1];
           const edge = ter(x + dxdx, z + dzdx) === 0 || ter(x - dxdx, z - dzdx) === 0 || ter(x + dxdy, z + dzdy) === 0 || ter(x - dxdy, z - dzdy) === 0;
@@ -303,20 +313,22 @@
     const [c2, g] = NB.canvas(CH, CH);
     g.putImageData(img, 0, 0);
     const s = new PIXI.Sprite(PIXI.Texture.from(c2));
-    s.x = cx * CH; s.y = cy * CH;
+    s.x = cx * S; s.y = cy * S; s.scale.set(step); s.visible = false;
     ground.addChild(s);
-    return { sprite: s, seen: frameNo };
+    return { sprite: s, seen: frameNo, step };
   }
   function updateGround() {
-    const x0 = Math.floor((cam.px - W / 2 / cam.zoom) / CH), x1 = Math.floor((cam.px + W / 2 / cam.zoom) / CH);
-    const y0 = Math.floor((cam.py - H / 2 / cam.zoom) / CH), y1 = Math.floor((cam.py + H / 2 / cam.zoom) / CH);
+    const step = cam.zoom < 1 ? 2 : 1, S = CH * step;
+    const x0 = Math.floor((cam.px - W / 2 / cam.zoom) / S), x1 = Math.floor((cam.px + W / 2 / cam.zoom) / S);
+    const y0 = Math.floor((cam.py - H / 2 / cam.zoom) / S), y1 = Math.floor((cam.py + H / 2 / cam.zoom) / S);
+    for (const c of chunks.values()) c.sprite.visible = false;
     for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) {
-      const key = cx + ',' + cy;
+      const key = step + ':' + cx + ',' + cy;
       let c = chunks.get(key);
-      if (!c) { c = paintChunk(cx, cy); chunks.set(key, c); }
-      c.seen = frameNo;
+      if (!c) { c = paintChunk(cx, cy, step); chunks.set(key, c); }
+      c.seen = frameNo; c.sprite.visible = true;
     }
-    if (chunks.size > 70) for (const [key, c] of chunks) if (c.seen < frameNo - 60) { ground.removeChild(c.sprite); c.sprite.texture.destroy(true); chunks.delete(key); }
+    if (chunks.size > 90) for (const [key, c] of chunks) if (c.seen < frameNo - 60) { ground.removeChild(c.sprite); c.sprite.texture.destroy(true); chunks.delete(key); }
   }
 
   // ---------- hay bales on the meadows (summer / autumn) ----------
@@ -471,13 +483,23 @@
     return best;
   }
   const clickCount = new Map();
+  let dairyClicks = 0, dairyLast = 0;
   function clickBuilding(b) {
     let text;
+    const E = NB.Entities;
+    if (b.kind === 'dairy') { // hammering on the dairy sets it on fire (it burned down recently...)
+      const now = performance.now() / 1000;
+      dairyClicks = now - dairyLast < 10 ? dairyClicks + 1 : 1; dairyLast = now;
+      if (E.fire && E.fire.b === b) { NB.UI.say(b.top, E.fire.intensity > 0 ? NB.pick(['FÜÜR! D\'Füürwehr vo Niederwil isch underwägs!', 'Zrugg! Es brönnt!', 'Nid scho wider…']) : NB.pick(['Puh. Glöscht. Alles verruesset.', 'D\'Gehrigs bruuched en neue Astrich.'])); return; }
+      if (dairyClicks >= 7 && E.startFire(b)) { NB.UI.say(b.top, 'Hey, nid so fescht! … Füür! FÜÜR! 🔥'); NB.Audio.play('fire', { pos: b.top }); dairyClicks = 0; return; }
+      if (dairyClicks === 4) { NB.UI.say(b.top, 'Hey, nid so fescht klopfe! Das Huus isch neu!'); NB.Audio.play('door', { pos: b.top }); return; }
+      if (dairyClicks === 6) { NB.UI.say(b.top, 'Es schmöckt irgendwie verbrännt… 👃'); NB.Audio.play('door', { pos: b.top }); return; }
+    }
     if (b.inside.size) {
       const who = [...b.inside].map((v) => v.name).join(' und ');
       const late = NB.inWindow(NB.clock.minutes(), '22:00', '06:30');
-      text = late ? `Psst! ${who} schloft${b.inside.size > 1 ? 'e' : ''}. 💤` : `${who} ${b.inside.size > 1 ? 'sind' : 'isch'} dihei. Klopf klopf!`;
-      NB.Audio.play('door', { pos: b.top });
+      text = b.kind === 'dairy' ? `${who} ${b.inside.size > 1 ? 'sind' : 'isch'} am Chäse. 🧀` : late ? `Psst! ${who} schloft${b.inside.size > 1 ? 'e' : ''}. 💤` : `${who} ${b.inside.size > 1 ? 'sind' : 'isch'} dihei. Klopf klopf!`;
+      NB.Audio.play(b.kind === 'dairy' ? 'clink' : 'door', { pos: b.top });
     } else {
       const n = clickCount.get(b) || 0; clickCount.set(b, n + 1);
       text = b.occupants.length && b.kind === 'house' ? 'Niemer dihei.' : b.lines[n % b.lines.length];
@@ -564,10 +586,23 @@
     cam.px += (p[0] - cam.px) * k; cam.py += (p[1] - cam.py) * k;
   }
 
+  // ---------- Milchzentrale: steam from the chimney while the cheese is being made ----------
+  const dairy = houses.find((h) => h.b.kind === 'dairy' && h.rec.steam);
+  let steamT = 0;
+  function updateDairy(dt) {
+    if (!dairy) return;
+    steamT -= dt;
+    if (steamT > 0 || !NB.inWindow(NB.clock.minutes(), '05:00', '20:00')) return;
+    steamT = 0.45;
+    const [sx, sz, sy] = dairy.rec.steam, x = dairy.b.cx + sx, z = dairy.b.cz + sz;
+    if (NB.UI.onScreen({ x, z }, 120)) NB.UI.fx(x + NB.rr(-0.2, 0.2), sy, z + NB.rr(-0.2, 0.2), 'steam', { vy: NB.rr(1.0, 1.6), life: NB.rr(1.8, 2.6) });
+  }
+
   // ---------- loop ----------
   function frame(dtMs) {
     const dt = NB.clamp(dtMs / 1000, 0, 0.05);
     frameNo++;
+    updateDairy(dt);
     updateFollow(dt); clampCam(); applyCamera();
     updateView();
     NB.Env.update(dt);
