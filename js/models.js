@@ -20,87 +20,113 @@
   const WINDOW_LIGHT = '#ffd27a';
 
   // ---------- houses ----------
-  // b: snapped building spec { cx, cz, w (along u), d (along v), levels, kind, roof, face ('u'|'v') }
+  // b: snapped building spec { cx, cz, w (along u), d (along v), parts [{u, v, w, d, type?}] in the iso frame,
+  //    levels, kind (house|garage|barn|farmhouse|chapel|beiz), roofColor (from the aerial photo), oneRoof,
+  //    face ('u'|'v' = the visible face with the door), doorUV [u, v] }
   M.house = function (b, i) {
     const m = I.model();
-    const small = b.kind === 'garage', chapel = b.kind === 'chapel', floorH = 2.9;
-    const H = small ? 2.8 : b.levels * floorH + 0.6;
-    const w = Math.max(3, b.w), d = Math.max(3, b.d);
-    const wall = chapel ? '#fbf8f2' : small ? '#d9d2c6' : WALLS[i % WALLS.length];
-    const roofCol = P.snow ? (i % 3 ? '#f4f7fb' : '#e9eef5') : chapel ? '#6f7486' : small ? '#8a8f9c' : ROOFS[(i * 3) % ROOFS.length];
-    const over = small ? 0.2 : 0.6;
-    const flat = small && b.roof !== 'gabled';
-    const rh = flat ? 0.3 : small ? 0.6 : chapel ? Math.min(w, d) * 0.7 : Math.min(5.5, Math.min(w, d) * 0.42);
-    m.shadow(-w / 2, -d / 2, w, d, H + rh * 0.5);
-    m.box(-w / 2, -d / 2, 0, w, d, H, wall);
-    if (!small) m.box(-w / 2 - 0.08, -d / 2 - 0.08, 0, w + 0.16, d + 0.16, 0.7, '#b9b0a6');
-    // roof (ridge along the longer side)
-    const along = w >= d ? 'u' : 'v';
-    if (flat) m.cbox(0, 0, H, w + 0.3, d + 0.3, rh, roofCol);
-    else if (b.roof === 'hipped') m.hip(-w / 2 - over, -d / 2 - over, H, w + over * 2, d + over * 2, rh, roofCol);
-    else m.gable(-w / 2 - over, -d / 2 - over, H, w + over * 2, d + over * 2, rh, along, roofCol);
-    // chimney on a visible slope
-    if (!small && b.kind === 'house' && i % 3 !== 2) {
-      const cu = along === 'u' ? w * 0.2 : w * 0.25, cv = along === 'u' ? d * 0.25 : -d * 0.2;
-      m.cbox(cu, cv, H + rh * 0.55, 0.7, 0.7, 1.2, '#a8604c');
-    }
-
-    // windows on the two visible faces (+u right, +v left); glass lights up at night (light layer)
+    const small = b.kind === 'garage', chapel = b.kind === 'chapel', barnKind = b.kind === 'barn';
+    const homey = b.kind === 'house' || b.kind === 'farmhouse';
+    const floorH = 2.8;
+    const H = small ? 2.6 : barnKind ? 4.8 : chapel ? 5.5 : b.levels * floorH + 0.4;
+    const wall = chapel ? '#fbf8f2' : small ? '#d9d2c6' : barnKind ? '#c99a6b' : WALLS[i % WALLS.length];
+    const WOOD = '#b07a4a', PLANK = '#8f5f36';
+    const roofCol = P.snow ? (i % 3 ? '#f4f7fb' : '#e9eef5') : b.roofColor || (chapel ? '#6f7486' : ROOFS[(i * 3) % ROOFS.length]);
+    const parts = (b.parts && b.parts.length ? b.parts : [{ u: 0, v: 0, w: b.w, d: b.d }]).map((p) => ({ ...p, w: Math.max(1.5, p.w), d: Math.max(1.5, p.d) }));
+    const insideOther = (self, u, v) => parts.some((p) => p !== self && Math.abs(u - p.u) < p.w / 2 && Math.abs(v - p.v) < p.d / 2);
     const shutter = SHUTTERS[i % SHUTTERS.length];
     const flower = FLOWERS[i % FLOWERS.length];
-    const faceBox = (axis, p, off, across, y, dep, len, h, col, o) =>
-      axis === 'u' ? m.box(w / 2 + off, p + across - len / 2, y, dep, len, h, col, o) : m.box(p + across - len / 2, d / 2 + off, y, len, dep, h, col, o);
-    const addWindow = (axis, p, yc, ground) => {
-      faceBox(axis, p, 0, 0, yc - 0.675, 0.08, 1.15, 1.35, '#ffffff');
-      faceBox(axis, p, 0.02, 0, yc - 0.55, 0.1, 0.9, 1.1, '#6aa4d8', { light: WINDOW_LIGHT, noOutline: true });
-      if (shutter && !small) { faceBox(axis, p, 0, -0.8, yc - 0.675, 0.08, 0.35, 1.35, shutter); faceBox(axis, p, 0, 0.8, yc - 0.675, 0.08, 0.35, 1.35, shutter); }
-      if (!small && ground && !P.snow) { faceBox(axis, p, 0, 0, yc - 0.95, 0.3, 1.2, 0.25, '#a8673a'); faceBox(axis, p, 0.06, 0, yc - 0.72, 0.22, 1.1, 0.18, flower, { noOutline: true }); }
+    // a box sticking out of the +u face (at u = fu) or the +v face (at v = fv), centred at `p` along the face
+    const onFace = (axis, f, p, off, across, y, dep, len, h, col, o) =>
+      axis === 'u' ? m.box(f + off, p + across - len / 2, y, dep, len, h, col, o) : m.box(p + across - len / 2, f + off, y, len, dep, h, col, o);
+    const addWindow = (axis, f, p, yc, ground) => {
+      onFace(axis, f, p, 0, 0, yc - 0.675, 0.08, 1.15, 1.35, '#ffffff');
+      onFace(axis, f, p, 0.02, 0, yc - 0.55, 0.1, 0.9, 1.1, '#6aa4d8', { light: WINDOW_LIGHT, noOutline: true });
+      if (shutter && homey) { onFace(axis, f, p, 0, -0.8, yc - 0.675, 0.08, 0.35, 1.35, shutter); onFace(axis, f, p, 0, 0.8, yc - 0.675, 0.08, 0.35, 1.35, shutter); }
+      if (homey && ground && !P.snow && i % 2 === 0) { onFace(axis, f, p, 0, 0, yc - 0.95, 0.3, 1.2, 0.25, '#a8673a'); onFace(axis, f, p, 0.06, 0, yc - 0.72, 0.22, 1.1, 0.18, flower, { noOutline: true }); }
     };
     const doorAxis = b.face || 'v';
-    if (!small) {
-      const levels = chapel ? 1 : b.levels;
+    const [du, dv] = b.doorUV || [0, b.d / 2];
+    const doorF = doorAxis === 'u' ? du : dv, doorP = doorAxis === 'u' ? dv : du;
+    let top = H;
+
+    // bodies + roofs, one per block
+    for (const p of parts) {
+      const barn = p.type === 'barn';
+      const u0 = p.u - p.w / 2, v0 = p.v - p.d / 2;
+      const rh = chapel ? Math.min(p.w, p.d) * 0.7 : small ? Math.min(1.2, Math.min(p.w, p.d) * 0.3) : Math.min(5, Math.min(p.w, p.d) * 0.42);
+      m.shadow(u0, v0, p.w, p.d, H + rh * 0.5);
+      m.box(u0, v0, 0, p.w, p.d, H, barn ? WOOD : wall);
+      if (barn) { // vertical planks on the visible faces
+        for (let t = 0.6; t < p.d; t += 1.2) if (!insideOther(p, p.u + p.w / 2 + 0.2, v0 + t)) m.box(p.u + p.w / 2, v0 + t - 0.05, 0.1, 0.05, 0.1, H - 0.2, PLANK, { noOutline: true });
+        for (let t = 0.6; t < p.w; t += 1.2) if (!insideOther(p, u0 + t, p.v + p.d / 2 + 0.2)) m.box(u0 + t - 0.05, p.v + p.d / 2, 0.1, 0.1, 0.05, H - 0.2, PLANK, { noOutline: true });
+      } else if (homey || b.kind === 'beiz') m.box(u0 - 0.08, v0 - 0.08, 0, p.w + 0.16, p.d + 0.16, 0.6, '#b9b0a6');
+      if (!b.oneRoof) {
+        const over = small ? 0.25 : 0.6;
+        m.gable(u0 - over, v0 - over, H, p.w + over * 2, p.d + over * 2, rh, p.w >= p.d ? 'u' : 'v', roofCol);
+        top = Math.max(top, H + rh);
+      }
+      // windows on the two visible faces (+u right, +v left)
+      if (small || barn) continue;
+      const levels = chapel || barnKind ? 1 : b.levels;
       for (const axis of ['u', 'v']) {
-        const len = axis === 'u' ? d : w;
-        const n = Math.max(1, Math.floor((len - 1.5) / 3.1));
+        const len = axis === 'u' ? p.d : p.w, f = axis === 'u' ? p.u + p.w / 2 : p.v + p.d / 2, c0 = axis === 'u' ? v0 : u0;
+        const n = Math.max(1, Math.floor((len - 1.2) / (barnKind ? 5 : 3.1)));
         for (let lv = 0; lv < levels; lv++) {
-          const y = chapel ? 2.6 : 1.7 + lv * floorH;
+          const y = chapel ? 2.8 : barnKind ? 2.4 : 1.6 + lv * floorH;
           for (let k = 0; k < n; k++) {
-            const p = -len / 2 + ((k + 0.5) * len) / n;
-            if (lv === 0 && axis === doorAxis && Math.abs(p) < 1.6) continue; // leave room for the door
+            const q = c0 + ((k + 0.5) * len) / n;
+            if (axis === 'u' ? insideOther(p, f + 0.3, q) : insideOther(p, q, f + 0.3)) continue; // face is inside another block
+            if (lv === 0 && axis === doorAxis && Math.abs(f - doorF) < 0.2 && Math.abs(q - doorP) < 1.6) continue; // room for the door
             if (chapel && axis === 'u') continue; // the tower end
-            addWindow(axis, p, y, lv === 0);
+            addWindow(axis, f, q, y, lv === 0);
           }
         }
       }
     }
-    // door on the street-facing visible face
-    const doorCol = small ? '#e4e0d8' : chapel ? '#7a4a2a' : DOORS[i % DOORS.length];
-    const faceLen = doorAxis === 'u' ? d : w;
-    const dw = small ? Math.min(2.6, faceLen - 0.6) : 1.1, dh = small ? 2.2 : 2.1;
-    const doorP = chapel ? 0 : 0;
-    faceBox(doorAxis, doorP, 0, 0, 0, 0.12, dw, dh, doorCol);
-    if (!small) {
-      faceBox(doorAxis, doorP, 0, 0, 0, 0.6, 1.6, 0.18, '#c9c0b6');
-      faceBox(doorAxis, doorP, 0.1, 0.32, 1.0, 0.1, 0.12, 0.12, '#f2c23a', { noOutline: true });
+    // farmhouse: one long roof over living part + barn, big barn door (Tenntor) + hay hatch on the door face
+    if (b.oneRoof) {
+      const rh = Math.min(6, Math.min(b.w, b.d) * 0.5);
+      m.shadow(-b.w / 2, -b.d / 2, b.w, b.d, H + rh * 0.5);
+      m.gable(-b.w / 2 - 0.7, -b.d / 2 - 0.7, H, b.w + 1.4, b.d + 1.4, rh, b.w >= b.d ? 'u' : 'v', roofCol, { key: 1e6 }); // over both parts
+      top = Math.max(top, H + rh);
+      for (const p of parts.filter((q) => q.type === 'barn')) {
+        const f = doorAxis === 'u' ? p.u + p.w / 2 : p.v + p.d / 2, c = doorAxis === 'u' ? p.v : p.u;
+        onFace(doorAxis, f, c, 0, 0, 0, 0.14, 3.6, 3.4, '#7a4a2a');
+        onFace(doorAxis, f, c, 0.1, 0, 1.6, 0.06, 3.4, 0.16, '#5a3520', { noOutline: true });
+        onFace(doorAxis, f, c, 0.1, 0, 0.1, 0.06, 0.16, 3.2, '#5a3520', { noOutline: true });
+        onFace(doorAxis, f, c, 0, 0, H - 1.4, 0.14, 1.4, 1.1, '#7a4a2a');
+      }
+    }
+    if (!small && homey && i % 3 !== 2) { const p = parts[0]; m.cbox(p.u + p.w * 0.2, p.v - p.d * 0.15, top - 1.2, 0.7, 0.7, 1.6, '#a8604c', b.oneRoof ? { key: 2e6 } : undefined); }
+
+    // door on the street-facing visible face, in line with the main block
+    const doorCol = small || barnKind ? '#e4e0d8' : chapel ? '#7a4a2a' : DOORS[i % DOORS.length];
+    const mainLen = doorAxis === 'u' ? parts[0].d : parts[0].w;
+    const dw = small || barnKind ? Math.min(2.6, mainLen - 0.6) : 1.1, dh = small || barnKind ? 2.2 : 2.1;
+    onFace(doorAxis, doorF, doorP, 0, 0, 0, 0.12, dw, dh, doorCol);
+    if (!small && !barnKind) {
+      onFace(doorAxis, doorF, doorP, 0, 0, 0, 0.6, 1.6, 0.18, '#c9c0b6');
+      onFace(doorAxis, doorF, doorP, 0.1, 0.32, 1.0, 0.1, 0.12, 0.12, '#f2c23a', { noOutline: true });
     }
     if (b.kind === 'beiz') {
-      faceBox(doorAxis, doorP, 0, 0, 2.65, 0.14, 1.9, 0.7, '#c0392b');
-      faceBox(doorAxis, doorP, 0.14, 0, 2.92, 0.06, 1.4, 0.16, '#fff6dc', { noOutline: true });
+      onFace(doorAxis, doorF, doorP, 0, 0, 2.65, 0.14, 1.9, 0.7, '#c0392b');
+      onFace(doorAxis, doorF, doorP, 0.14, 0, 2.92, 0.06, 1.4, 0.16, '#fff6dc', { noOutline: true });
     }
-    // chapel: bell tower at the +u end, with spire and cross
+    // chapel: small bell tower at the +u end of the main block, with spire and cross
     let bellTop = 0;
     if (chapel) {
-      const tw = 2.4, th = H + rh + 2.5, tu = w / 2 - tw / 2 - 0.2;
-      m.cbox(tu, 0, 0, tw, tw, th, '#fbf8f2');
-      m.box(tu + tw / 2, -0.35, th - 1.6, 0.1, 0.7, 1.0, '#3a3a48');
-      m.box(tu - 0.35, tw / 2, th - 1.6, 0.7, 0.1, 1.0, '#3a3a48');
-      m.pyramid(tu - tw * 0.6, -tw * 0.6, th, tw * 1.2, tw * 1.2, 3.6, '#5b6070');
-      m.cbox(tu, 0, th + 3.5, 0.14, 0.14, 1.1, '#e8c547', { noOutline: true });
-      m.cbox(tu, 0, th + 4.1, 0.6, 0.14, 0.14, '#e8c547', { noOutline: true });
-      bellTop = th + 1;
+      const p = parts[0], tw = 1.8, th = top + 1.2, tu = p.u + p.w / 2 - tw / 2 - 0.4;
+      m.cbox(tu, p.v, 0, tw, tw, th, '#fbf8f2');
+      m.box(tu + tw / 2, p.v - 0.3, th - 1.3, 0.1, 0.6, 0.8, '#3a3a48');
+      m.box(tu - 0.3, p.v + tw / 2, th - 1.3, 0.6, 0.1, 0.8, '#3a3a48');
+      m.pyramid(tu - tw * 0.6, p.v - tw * 0.6, th, tw * 1.2, tw * 1.2, 3, '#5b6070');
+      m.cbox(tu, p.v, th + 2.9, 0.14, 0.14, 1, '#e8c547', { noOutline: true });
+      m.cbox(tu, p.v, th + 3.4, 0.55, 0.14, 0.14, '#e8c547', { noOutline: true });
+      bellTop = th + 1; top = th + 4;
     }
     const r = m.render();
-    r.height = H + rh; r.bellTop = bellTop;
+    r.height = top; r.bellTop = bellTop;
     return r;
   };
 
@@ -204,6 +230,37 @@
     m.cbox(1.9, -0.3, 2.5, 0.6, 0.06, 0.6, '#ffd200');
     m.cbox(1.9, -0.34, 2.62, 0.35, 0.04, 0.36, '#2d7a3c', { noOutline: true });
     return m.render();
+  };
+  // wooden bench (heading = the direction you look when sitting on it)
+  M.bench = function (heading) {
+    const m = I.model(heading);
+    m.shadow(-0.9, -0.25, 1.8, 0.5, 0.5);
+    [-0.75, 0.75].forEach((x) => { m.cbox(x, 0, 0, 0.1, 0.4, 0.42, '#5a3520'); m.cbox(x, -0.22, 0.42, 0.1, 0.08, 0.5, '#5a3520'); });
+    m.cbox(0, 0, 0.42, 1.8, 0.45, 0.07, '#a8673a');
+    m.cbox(0, -0.22, 0.62, 1.8, 0.06, 0.32, '#a8673a');
+    return m.render();
+  };
+  // octagonal prism (round-ish in pixel art): centre, radius, bottom y, height
+  const prism8 = (m, cx, cz, r, y, h, col, o) => {
+    const V = [];
+    for (let k = 0; k < 8; k++) { const a = ((k + 0.5) * Math.PI) / 4; V.push([cx + Math.cos(a) * r, cz + Math.sin(a) * r, y]); }
+    for (let k = 0; k < 8; k++) V.push([V[k][0], V[k][1], y + h]);
+    const F = [[8, 9, 10, 11, 12, 13, 14, 15]];
+    for (let k = 0; k < 8; k++) { const j = (k + 1) % 8; F.push([k, j, j + 8, k + 8]); }
+    m.solid(V, F, col, o);
+  };
+  // little sitting place: paved round patch, round table, four stools
+  M.sitzplatz = function () {
+    if (!treeCache.sitzplatz) {
+      const m = I.model();
+      prism8(m, 0, 0, 2.6, 0, 0.04, '#d8cfbf', { key: -1e6 });
+      m.shadow(-0.6, -0.6, 1.2, 1.2, 0.5);
+      m.cbox(0, 0, 0, 0.14, 0.14, 0.74, '#5a3520');
+      prism8(m, 0, 0, 0.75, 0.74, 0.08, '#a8673a');
+      [[1.25, 0], [-1.25, 0], [0, 1.25], [0, -1.25]].forEach(([x, z]) => { m.cbox(x, z, 0, 0.08, 0.08, 0.42, '#5a3520'); prism8(m, x, z, 0.24, 0.42, 0.07, '#c0503f'); });
+      treeCache.sitzplatz = m.render();
+    }
+    return treeCache.sitzplatz;
   };
   M.table = function () {
     if (!treeCache.table) {
@@ -366,18 +423,25 @@
   };
   M.cat = function (L) {
     L = Object.assign({ fur: '#e08a3c', dark: '#a85a22', pattern: 'tabby' }, L);
-    const luna = L.pattern === 'luna';
+    const luna = L.pattern === 'luna', mina = L.pattern === 'mina';
     const WHT = '#f8f4ec', BLK = '#2e2a2c', ORG = '#e0883a';
     const colorOf = (ch, x, y) => {
       if (ch === 'e') return luna ? '#c9cf3a' : '#c8e04a';
       if (ch === 'n') return '#f0a0b0';
-      if (ch === 'z') return NB.shade(luna ? WHT : L.fur, 0.6);
-      if (ch === 'w') return L.pattern === 'tuxedo' || L.pattern === 'socks' || luna || L.pattern === 'calico' ? '#ffffff' : L.fur;
+      if (ch === 'z') return NB.shade(luna || mina ? WHT : L.fur, 0.6);
+      if (ch === 'w') return L.pattern === 'tuxedo' || L.pattern === 'socks' || luna || mina || L.pattern === 'calico' ? '#ffffff' : L.fur;
       if (luna) {
         if (x >= 8 && y <= 2) return x <= 9 ? BLK : ORG; // head: black patch left, orange right
         if (x <= 1) return y % 2 ? BLK : ORG; // banded tail
         if (y <= 4 && x >= 3 && x <= 4) return BLK; // back patches
         if (y <= 4 && x >= 6 && x <= 7) return ORG;
+        return WHT;
+      }
+      if (mina) { // calico, but mostly white: small orange spot on the head, one black back patch, tail tip
+        if (x === 10 && y <= 1) return ORG;
+        if (x === 0) return y % 2 ? BLK : ORG;
+        if (y === 3 && x >= 4 && x <= 5) return BLK;
+        if (y === 4 && x === 6) return ORG;
         return WHT;
       }
       if (L.pattern === 'tabby' && y >= 3 && y <= 6 && x % 3 === 0) return L.dark;

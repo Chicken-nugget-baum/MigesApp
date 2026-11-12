@@ -6,6 +6,17 @@ window.NB = window.NB || {};
 NB.Data = NB.Data || {};
 NB.Data.characters = [
   // ---------------- family ----------------
+  // Mige: pink long hair, black shirt, jeans. Lives in the Buurehuus (Niederwilerstrasse 3) with Mina and Luna.
+  {
+    id: 'mige', name: 'Mige', home: 'buurehuus', cycle: true,
+    look: { skin: '#f1c7a0', hair: '#ff7ac8', hairStyle: 'long', shirt: '#1f1d22', pants: '#3f68a8', shoes: '#f4f1ea' },
+    voice: 1.3, favorites: ['sitzplatz', 'hof', 'dorfplatz'],
+    routine: [{ at: '07:30', go: 'hof' }, { at: '08:30', go: 'home:buurehuus' }, { at: '12:00', go: 'sitzplatz' }, { at: '13:00', go: 'home:buurehuus' }, { at: '17:30', go: 'dorfplatz' }, { at: '18:30', go: 'hof' }, { at: '19:15', go: 'sitzplatz' }, { at: '21:00', go: 'home:buurehuus' }],
+    sleep: ['23:30', '07:00'],
+    clicks: ['Mina, Luna, ÄSSE!', 'Shiiit, es lauft so viel im Gschäft.', 'Joel, hesch bock zum Vibe Code?'],
+    random: ['Mina, Luna, ÄSSE!', 'Shiiit, es lauft so viel im Gschäft.', 'Joel, hesch bock zum Vibe Code?'],
+    night: ['Joel, hesch bock zum Vibe Code?', 'Mina, Luna, ÄSSE!'],
+  },
   {
     id: 'grosi', name: 'Grosi', home: 'haus1',
     look: { skin: '#f1c7a0', hair: '#d8d8d8', hairStyle: 'bun', shirt: '#7a4aa0', dress: '#7a4aa0', glasses: true, apron: '#ffffff' },
@@ -65,6 +76,17 @@ NB.Data.characters = [
     clicks: ['Hey, alles klar?', 'Wotsch en Witz ghöre?', 'Wieso isch d\'Chue uf de Wiese? Will si ned flüüge cha!', 'Gnueg glachet für hüt!'],
     random: ['Im Wald hets hüt Pilz.', 'Wer chunnt mit is Casino?'],
     night: ['Nur no eis Bierli…'],
+  },
+  // Joel: brown short hair, black glasses, white pullover, dark jeans. Lives in the Buurehuus too.
+  {
+    id: 'joel', name: 'Joel', home: 'buurehuus', cycle: true,
+    look: { skin: '#eec1a0', hair: '#6b4226', hairStyle: 'short', glasses: true, shirt: '#f4f3ee', pants: '#26324a', shoes: '#2a2a2a' },
+    voice: 0.85, favorites: ['sitzplatz', 'hof', 'beiz'],
+    routine: [{ at: '08:00', go: 'home:buurehuus' }, { at: '12:15', go: 'sitzplatz' }, { at: '13:15', go: 'home:buurehuus' }, { at: '16:30', go: 'hof' }, { at: '17:30', go: 'beiz' }, { at: '19:00', go: 'sitzplatz' }, { at: '21:00', go: 'home:buurehuus' }],
+    sleep: ['00:30', '07:30'],
+    clicks: ['Vibe Code forever! 💻', 'Dörfi de Luna en Snack geh?', 'Mige – gits en Zigi?'],
+    random: ['Vibe Code forever! 💻', 'Dörfi de Luna en Snack geh?', 'Mige – gits en Zigi?'],
+    night: ['Vibe Code forever! 💻', 'Mige – gits en Zigi?'],
   },
   // ---------------- villagers ----------------
   {

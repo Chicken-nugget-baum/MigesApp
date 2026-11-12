@@ -1,6 +1,6 @@
 # Nesselnbach – interactive isometric pixel-art village
 
-Handoff notes so work can continue on another computer. Status as of 2026-11-12: switched from low-poly 3D (three.js) to **isometric pixel art on PixiJS**, only the three streets.
+Handoff notes so work can continue on another computer. Status as of 2026-11-12: **isometric pixel art on PixiJS** (Joel), with official Swiss building data, the Buurehuus, Mina, Luna and Mige ported onto it.
 
 ## Idea
 A living isometric pixel-art version of **Nesselnbach** (Ortsteil of Niederwil AG, Reusstal, Freiamt).
@@ -26,7 +26,7 @@ A living isometric pixel-art version of **Nesselnbach** (Ortsteil of Niederwil A
 - Units are metres; x = east, z = south, y = up; vehicles face +z. `NB.Iso.project(x, y, z)` -> world pixels (2:1 iso, viewer at +x +z, `NB.Iso.YAW` rotates the whole map); `NB.project` -> screen pixels (camera applied).
 - **Depth sorting**: buildings are topologically sorted once (axis-aligned boxes in the iso frame, slots of 2000 zIndex each); everything else gets `NB.world.zkey(x, z)` = slot of the first building that hides the point (exact line-of-sight test against the building box) + depth within the slot.
 - **Ground** is painted lazily: a top-down terrain-code map (2 cells/m: grass, sidewalk, asphalt, plaza) is rasterized once with canvas strokes of the street polylines; screen-aligned 256 px chunks are generated per pixel (hash speckles, curb lines, cobbles) when they scroll into view and cached.
-- **Buildings are snapped** to the iso grid (`NB.Iso.snapBuilding` in `js/world.js`): rotated by at most 45 deg about their centre, the door moved to the visible face (+u or +v) nearest the real street side, entry point recomputed. Pathfinding uses the snapped boxes.
+- **Buildings are snapped** to the iso grid; their blocks (`parts`) turn with them and are stored in the iso frame, the door goes on the outside wall in line with the main block (`doorUV`) (`NB.Iso.snapBuilding` in `js/world.js`): rotated by at most 45 deg about their centre, the door moved to the visible face (+u or +v) nearest the real street side, entry point recomputed. Pathfinding uses the snapped boxes.
 - Day/night = full-screen multiply tint (dusk orange -> night blue) + a `lights` layer above it (lit windows, lamp heads, additive lamp glow); weather = grey multiply dim, fog overlay, rain/snow particle sprites in screen space.
 - **npm libraries, vendored**: `npm install` runs `scripts/vendor.mjs` (postinstall), which builds browser files into `vendor/` (committed, so Pages works without node_modules):
   - `pixi.js` – bundled by `esbuild` (devDependency) into `vendor/pixi.js` (`window.PIXI`)
@@ -36,20 +36,25 @@ A living isometric pixel-art version of **Nesselnbach** (Ortsteil of Niederwil A
 - Test URL params: `?time=22:00`, `?speed=60`, `?season=winter`, `?weather=clear|cloudy|rain|fog|snow`, `?at=-180,84` (camera target in metres), `?zoom=1..4`, `?nointro=1`.
 - Note: `npm run shot` uses Chrome's virtual time budget, which barely advances the animation loop (vehicles never arrive). For live checks drive headless Chrome over the DevTools protocol instead (load the page, wait real seconds, `Page.captureScreenshot`).
 
-## Real map pipeline (OpenStreetMap → scene)
-- `npm run osm` → `scripts/osm.mjs` downloads roads, buildings, water, landuse, POIs for bbox 47.371,8.278 – 47.399,8.312 via Overpass into `osm/raw.json` (committed so the scene can be rebuilt offline).
-- `npm run scene` → `scripts/build-scene.mjs` keeps only Niederwilerstrasse (6 m), Ifangweg (4.5 m), Kapellenweg (4 m) and the buildings within 42 m of them, and writes `js/data/scene.js`: street polylines, buildings as oriented boxes (centre, size, angle, levels, roof shape, door facing the street), bus stops, Postauto route, POIs, labels. Origin [960, 1200] m from the bbox NW corner. Don't edit `scene.js` by hand – change the generator and rerun.
-- Real geography: Niederwilerstrasse from the Landstrasse junction past Unterdorf and Mitteldorf to Wolff's Stübli (= the Beiz, id `beiz`); Ifangweg loop; Kapellenweg west to the **Heiligkreuz-Kapelle** (id `kapelle`, bell tower).
-- The 12 houses nearest the centre become `haus1`–`haus12` (family/villager homes), the rest `h#` / `g#` (garages).
-- Invented: the Dorfplatz next to the Mitteldorf stop. Old 2D POI names (reuss, wald, gartebahn, niederwil, …) still work as aliases (`js/world.js`).
-- Map data © OpenStreetMap contributors (ODbL) – credited on the intro screen.
+## Real map pipeline (official Swiss data + OSM → 3D scene)
+- `npm run osm` → `scripts/osm.mjs` downloads OpenStreetMap data (bbox 47.371,8.278 – 47.399,8.312) into `osm/raw.json`. Used for the **street centre lines** and bus stops.
+- `npm run av` → `scripts/av.mjs` downloads official open data into `osm/av.json` (LV95 coordinates):
+  - **Amtliche Vermessung Kanton Aargau** (WFS geodienste.ch, layer LCSF): surveyed building outlines (with EGID), road surfaces, sidewalks, driveways, pools
+  - **GWR** building register (api3.geo.admin.ch): address, floors, category, year, flats per EGID
+  - **SWISSIMAGE** aerial photo (wms.geo.admin.ch): roof colour sampled inside each outline
+- `npm run scene` → `scripts/build-scene.mjs` writes `js/data/scene.js`: only buildings whose **address** is on Niederwilerstrasse, Ifangweg or Kapellenweg (Nesselnbach), with real outlines split into rectangular blocks (each gets a gable roof), floors from GWR, roof colour from the aerial photo (a bit brighter/saturated). Street widths measured from the surveyed road surface. Don't edit `scene.js` by hand.
+- Google Maps / Street View is not used (its terms forbid extracting data); facade colours are still invented.
+- **Buurehuus** = Niederwilerstrasse 3 (id `buurehuus`, kind `farmhouse`): one long roof, living part on the left (south) as seen from the street, wooden barn with Tenntor on the right. Home of **Mige** (pink long hair, black shirt, jeans) and **Joel** (brown short hair, black glasses, white pullover, dark jeans) – click lines cycle via `cycle: true` – plus Mina and Luna. Bench next to the front door (`M.bench`), and left of the house (beyond the living part) a small paved **Sitzplatz** with a round table and four stools (`M.sitzplatz`, POI `sitzplatz`; placed in `js/world.js` -> `map.farmProps`).
+- **Traffic:** villagers on the street run to the nearest side when a car or the Postauto comes within ~25 m (`Villager.evade`, triggered in `Vehicle.update`) and wait until it has passed.
+- Landmarks: Heiligkreuz Kapelle = Kapellenweg 10 (`kapelle`), the Beiz = Vereinslokal "Casino", Niederwilerstrasse 17.1 (`beiz`). The 12 houses nearest the centre are `haus1`–`haus12` (family homes), others `h#`, outbuildings `g#`.
+- Credits on the intro screen: OpenStreetMap (ODbL), Amtliche Vermessung AG, GWR (BFS), SWISSIMAGE (swisstopo).
 
 ## Files
 | File | Status | Content |
 |---|---|---|
 | `js/util.js` | done | helpers, seeded RNG, Zurich clock (`?time`, `?speed`), season |
 | `js/path.js` | done | A* pathfinding (`NB.findPath`) on the 2 m walk grid |
-| `js/data/scene.js` | generated | streets, buildings, stops, route, POIs from OpenStreetMap (see pipeline) |
+| `js/data/scene.js` | generated | streets (OSM), buildings (cadastral survey + GWR: outlines split into blocks, floors, roof colours), driveways/pools, stops, route, POIs (see pipeline) |
 | `js/iso.js` | done | `NB.Iso`: iso projection + inverse, 8-way facing from a heading, building snapping, pixel rasterizer (`Pix`), box/prism model builder (`model().box/cbox/gable/hip/pyramid/shadow().render()` -> outlined sprite with optional night-light layer), `rows()` for hand-drawn sprites with drop shadow |
 | `js/world.js` | done | snaps buildings, then `NB.map`: walk/animal cost grids, street distance, building specs (`inside`, lines, sounds, entry points), POIs + aliases, bus route |
 | `js/models.js` | done | pixel-art models: houses (gabled/hipped roofs, lit windows at night, shutters, flower boxes, chimney, door + step on the visible street side, snowy roofs in winter), chapel with tower/spire/cross, Beiz sign, seasonal trees (2 kinds, 8 variants) and bushes, lamps (with light), bus shelter, tables with umbrella, villagers (front/back/side, 3 walk frames, 2 wave frames), cats (walk/sit/sleep, patterns incl. Luna), Postauto + cars (16 headings, cached) |
@@ -58,7 +63,7 @@ A living isometric pixel-art version of **Nesselnbach** (Ortsteil of Niederwil A
 | `js/entities.js` | done | Villager (routine, home at night, click reactions, walk/wave frames, faces the viewer when clicked), Cat (idle/sit/sleep, meow, hold = purr, Luna zoomies), Vehicle (Postauto + cars on the real route, keep right, stop at stops, fade in/out). Each has a `sprite` and the current `frame` record (for pixel-perfect picking) |
 | `js/ui.js` | done | 2D overlay: speech bubbles, hover name tag, street labels, hearts/notes/dust; HUD (clock, zoom, centre, mute), intro "Iitrete" |
 | `js/data/characters.js` | **placeholders** | family + villagers as data (see format below) |
-| `js/data/animals.js` | done | cats: Mimi, Tiger, Schnurrli, Luna, Fleckli, Minka |
+| `js/data/animals.js` | done | cats: Mimi, Tiger, Schnurrli, Fleckli, Minka, plus **Luna** (calico, only says Miau/Mauz: `words`) and **Mina** (calico, mostly white, talks: `talk`), both at the Buurehuus (POI `hof`) |
 | `js/main.js` | done | PixiJS renderer: building depth order + `NB.world.zkey`, lazy ground chunks, houses + window-light sprites, trees/bushes, lamps + glow, shelters, tables, day/night + weather layers, camera (drag, wheel/pinch zoom, follow cat), pixel-perfect picking on sprite masks, click/hover/long-press, game loop |
 | `index.html`, `css/style.css` | done | page shell, two canvases, HUD pills, intro card |
 

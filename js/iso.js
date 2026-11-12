@@ -36,15 +36,31 @@
   // to a visible face (+u or +v) - the one closest to the real street side. Entry point 1.5 m outside the door.
   I.snapBuilding = function (b) {
     let k = Math.round((b.angle + YAW) / (Math.PI / 2));
-    if (((k % 2) + 2) % 2 === 1) { const w = b.w; b.w = b.d; b.d = w; k -= 1; } // w is now the extent along u, d along v
+    const odd = ((k % 2) + 2) % 2 === 1;
+    if (odd) { const w = b.w; b.w = b.d; b.d = w; k -= 1; } // w is now the extent along u, d along v
     b.angle = (k * Math.PI) / 2 - YAW;
+    // blocks (L/T-shaped outlines, farmhouse living part + barn) turn with the building:
+    // after the 90 deg frame swap a block at (u, v) is at (-v, u)
+    // then express them in the iso frame (angle 180 deg mirrors u and v), so the building frame = iso frame
+    const ca0 = Math.cos(b.angle), sa0 = Math.sin(b.angle);
+    b.parts = (b.parts && b.parts.length ? b.parts : [{ u: 0, v: 0, w: b.w, d: b.d }])
+      .map((p) => (odd ? { ...p, u: -p.v, v: p.u, w: p.d, d: p.w } : { ...p }))
+      .map((p) => { const [U, V] = I.rot(p.u * ca0 - p.v * sa0, p.u * sa0 + p.v * ca0); return { ...p, u: U, v: V }; });
+    b.angle = -YAW;
     const [nu, nv] = I.rot(b.doorN[0], b.doorN[1]);
     b.face = nu >= nv ? 'u' : 'v';
+    // door on the outside wall in line with the main block (parts[0]) on the visible face
+    const mp = b.parts[0];
+    let du, dv;
+    if (b.face === 'u') { dv = mp.v; du = Math.max(...b.parts.filter((q) => Math.abs(dv - q.v) < q.d / 2).map((q) => q.u + q.w / 2)); }
+    else { du = mp.u; dv = Math.max(...b.parts.filter((q) => Math.abs(du - q.u) < q.w / 2).map((q) => q.v + q.d / 2)); }
+    b.doorUV = [du, dv];
     const N = b.face === 'u' ? I.unrot(1, 0) : I.unrot(0, 1);
-    const half = b.face === 'u' ? b.w / 2 : b.d / 2;
+    const ca = Math.cos(b.angle), sa = Math.sin(b.angle);
+    const at = (u, v) => [b.cx + u * ca - v * sa, b.cz + u * sa + v * ca];
     b.doorN = [N[0], N[1]];
-    b.door = [b.cx + N[0] * half, b.cz + N[1] * half];
-    b.entry = [b.cx + N[0] * (half + 1.5), b.cz + N[1] * (half + 1.5)];
+    b.door = at(du, dv);
+    b.entry = [b.door[0] + N[0] * 1.5, b.door[1] + N[1] * 1.5];
     return b;
   };
 

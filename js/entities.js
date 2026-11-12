@@ -90,8 +90,37 @@
       this.inside = false; this.inBuilding = null;
       NB.Audio.play('door', { pos: this, vol: 0.4 });
     }
+    // a vehicle is coming: run to the nearest side of the street and wait until it has passed
+    evade(v) {
+      if (this.inside || this.evading) return;
+      const g = (x, z) => map.streetDist(x, z);
+      let nx = g(this.x + 0.5, this.z) - g(this.x - 0.5, this.z), nz = g(this.x, this.z + 0.5) - g(this.x, this.z - 0.5);
+      let l = Math.hypot(nx, nz);
+      if (l < 0.2) { // right on the centre line: go to the side we're already on (relative to the car)
+        const hx = Math.sin(v.heading), hz = Math.cos(v.heading), side = (this.x - v.x) * hz - (this.z - v.z) * hx >= 0 ? 1 : -1;
+        nx = hz * side; nz = -hx * side; l = 1;
+      }
+      nx /= l; nz /= l;
+      let tx = this.x, tz = this.z;
+      for (let k = 0; k < 16 && g(tx, tz) < 1.6; k++) { tx += nx * 0.5; tz += nz * 0.5; }
+      const [cx, cz] = map.toCell(tx, tz);
+      if (!map.inB(cx, cz) || !map.walkCost[cz * map.w + cx]) return;
+      this.evading = { v, x: tx, z: tz, t: 0 };
+      this.pause = 0; this.moving = true;
+      if (Math.random() < 0.45) say(this, v.type === 'bus' ? NB.pick(["S'Postauto!", 'Ui, de Bus!']) : NB.pick(['Achtung, es Auto!', "Hopp, uf d'Siite!", 'Ui!', 'Langsam!']), { quiet: true });
+    }
+    updateEvade(dt) {
+      const e = this.evading; e.t += dt;
+      const dx = e.x - this.x, dz = e.z - this.z, d = Math.hypot(dx, dz);
+      this.moving = d > 0.05;
+      if (this.moving) { const step = Math.min(d, 3.6 * dt); this.x += (dx / d) * step; this.z += (dz / d) * step; this.heading = Math.atan2(dx, dz); this.anim += dt * 1.8; }
+      else this.heading = Math.atan2(e.v.x - this.x, e.v.z - this.z); // watch it drive past
+      const v = e.v, ahead = (this.x - v.x) * Math.sin(v.heading) + (this.z - v.z) * Math.cos(v.heading);
+      if ((v.done || ahead < -4 || e.t > 12) && e.t > 0.6) { this.evading = null; this.path = null; this.goalKey = null; }
+    }
     update(dt) {
       if (this.hop > 0) this.hop = Math.max(0, this.hop - dt);
+      if (this.evading) { this.updateEvade(dt); return this.pose(dt); }
       if (this.pause > 0) { this.pause -= dt; this.moving = false; return this.pose(dt); }
       const g = this.currentGoal();
       const building = this.homeOf(g.place);
@@ -143,7 +172,8 @@
       this.lastClick = now;
       const night = this.c.sleep && NB.inWindow(NB.clock.minutes(), this.c.sleep[0], this.c.sleep[1]);
       const lines = night && this.c.night ? this.c.night : this.c.clicks || ['Grüezi!'];
-      const line = lines[Math.min(this.clicks, lines.length - 1)];
+      this.cycleIdx = ((this.cycleIdx == null ? -1 : this.cycleIdx) + 1) % lines.length;
+      const line = this.c.cycle ? lines[this.cycleIdx] : lines[Math.min(this.clicks, lines.length - 1)];
       say(this, line);
       NB.Audio.babble(line, this.c.voice, { pos: this });
       this.pause = 3.5; this.hop = 0.35;
@@ -164,6 +194,7 @@
       const s = map.randomIn(this.area, this.cost) || map.start;
       this.x = s.x; this.z = s.z; this.heading = Math.random() * 6.28;
     }
+    speak(text) { say(this, this.a.words ? NB.pick(this.a.words) : text); }
     sleepy() {
       const m = NB.clock.minutes(), night = NB.Env.darkness > 0.6;
       return night ? 0.7 : NB.inWindow(m, '12:30', '15:00') ? 0.45 : 0.15;
@@ -195,7 +226,7 @@
       this.state = 'zoom'; this.zoomT = NB.rr(5, 7); this.path = null; this.dustT = 0;
       this.zoomHome = { x: this.x, z: this.z };
       this.speed = 7;
-      say(this, NB.pick(['Brrrrt!', '*ZOOMIES!* 💨', 'Mrrrrp-mrrp!', 'Wiiii!']));
+      this.speak(NB.pick(['Brrrrt!', '*ZOOMIES!* 💨', 'Mrrrrp-mrrp!', 'Wiiii!']));
       NB.Audio.play('mrr', { pos: this, rate: 1.6 });
       this.zoomLeg();
     }
@@ -214,7 +245,7 @@
       if ((this.stepPath(dt) || !this.path) && this.zoomT > 0) { if (Math.random() < 0.35) this.hopT = 0.3; this.zoomLeg(); }
       if (this.zoomT <= 0) {
         this.state = 'sit'; this.timer = NB.rr(4, 8); this.path = null; this.speed = 1.4;
-        say(this, NB.pick(['Mrrp. 😼', '*hächel* …nomol?', 'Ich bi de schnällscht!']));
+        this.speak(NB.pick(['Mrrp. 😼', '*hächel* …nomol?', 'Ich bi de schnällscht!']));
       }
     }
     pose(dt) {
@@ -230,15 +261,21 @@
       const again = now - this.lastClick < 3;
       this.clicks = again ? this.clicks + 1 : 0; this.lastClick = now;
       if (this.a.zoomies && this.state !== 'sleep') { if (this.state !== 'zoom') this.startZoomies(); else this.zoomT += 1.5; return; }
-      if (this.state === 'sleep') { this.state = 'sit'; this.timer = NB.rr(4, 8); say(this, 'Mrrr?'); NB.Audio.play('mrr', { pos: this }); }
+      if (this.state === 'sleep') { this.state = 'sit'; this.timer = NB.rr(4, 8); this.speak('Mrrr?'); NB.Audio.play('mrr', { pos: this }); }
       else if (again) this.startPurr(2.8);
-      else { this.state = 'sit'; this.path = null; this.timer = NB.rr(3, 6); say(this, NB.pick(['Miau!', 'Miau?', 'Miiiau!'])); NB.Audio.play('meow', { pos: this, rate: this.a.voice || 1 }); }
+      else {
+        this.state = 'sit'; this.path = null; this.timer = NB.rr(3, 6);
+        const talk = this.a.talk;
+        if (talk) { this.talkIdx = ((this.talkIdx == null ? -1 : this.talkIdx) + 1) % talk.length; this.speak(Math.random() < 0.2 ? 'Miau.' : talk[this.talkIdx]); }
+        else this.speak(NB.pick(['Miau!', 'Miau?', 'Miiiau!']));
+        NB.Audio.play('meow', { pos: this, rate: this.a.voice || 1 });
+      }
     }
     startPurr(t) {
-      if (this.state === 'sleep') say(this, 'Mrrr?');
+      if (this.state === 'sleep') this.speak('Mrrr?');
       if (this.state === 'zoom') { this.state = 'sit'; this.speed = 1.4; }
       this.path = null; this.purrT = Math.max(this.purrT, t);
-      if (!this.purr) { this.purr = NB.Audio.loop('purr', { pos: this }); say(this, 'Rrrrr… ♥'); }
+      if (!this.purr) { this.purr = NB.Audio.loop('purr', { pos: this }); this.speak('Rrrrr… ♥'); }
     }
     holdStart() { this.held = true; this.startPurr(1); return true; }
     holdEnd() { this.held = false; this.purrT = Math.max(this.purrT, 0.6); }
@@ -280,6 +317,12 @@
       const dx = p.x - this.x, dz = p.z - this.z, d = Math.hypot(dx, dz);
       if (d > 0.01) this.heading = Math.atan2(dx, dz);
       let target = this.maxSpeed;
+      // people on the street ahead jump aside
+      for (const o of E.list) {
+        if (o.kind !== 'villager' || o.inside || o.evading) continue;
+        const ox = o.x - this.x, oz = o.z - this.z, ahead = (ox * dx + oz * dz) / (d || 1), side = Math.abs(ox * dz - oz * dx) / (d || 1);
+        if (ahead > 0 && ahead < 26 && side < 5 && map.streetDist(o.x, o.z) < 1.2) o.evade(this);
+      }
       for (const o of E.list) {
         if (o === this || (o.kind !== 'vehicle' && !(o.kind === 'villager' && !o.inside) && o.kind !== 'cat')) continue;
         const ox = o.x - this.x, oz = o.z - this.z;

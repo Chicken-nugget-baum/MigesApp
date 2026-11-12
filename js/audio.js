@@ -24,7 +24,6 @@
     engine: [0.35, 0.05, 55, 0.05, 0.6, 0.2, 2, 1, 0, 0, 0, 0, 0.04, 1, 0, 0, 0, 0.8, 0, 0.6, 400],
     chirp: [0.12, 0.3, 2600, 0.01, 0.03, 0.06, 0, 1, 30, 0, 0, 0, 0.05],
     cricket: [0.05, 0.1, 4200, 0, 0.12, 0.02, 0, 1, 0, 0, 0, 0, 0.02, 0, 0, 0, 0, 1, 0, 1],
-    rain: [0.35, 0, 1000, 0.3, 2, 0.3, 4, 1, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0.7, 0, 0.1, 1500],
   };
 
   // volume/pan from a world position relative to the camera
@@ -92,7 +91,7 @@
     return (purrBuf = out);
   }
 
-  // looping sound with stop(); used for purring and rain
+  // looping sound with stop(); used for purring
   const loops = new Set();
   A.loop = function (name, o) {
     let src = null;
@@ -145,13 +144,11 @@
     A.play('bellHi', o);
   };
 
-  // ambience: birds by day, crickets on summer nights, rain loop
-  let nextChirp = 2, rainLoop = null;
+  // ambience: birds by day, crickets on summer nights (no rain sound: it sounded bad)
+  let nextChirp = 2;
   A.update = function (dt, env) {
-    if (!Z || A.muted || Z.audioContext.state !== 'running') { if (rainLoop) { rainLoop.stop(); rainLoop = null; } return; }
+    if (!Z || A.muted || Z.audioContext.state !== 'running') return;
     const wet = env.weather === 'rain';
-    if (wet && !rainLoop) rainLoop = A.loop('rain', { vol: 0.5 });
-    if (!wet && rainLoop) { rainLoop.stop(); rainLoop = null; }
     nextChirp -= dt;
     if (nextChirp <= 0) {
       nextChirp = NB.rr(1.5, 6);

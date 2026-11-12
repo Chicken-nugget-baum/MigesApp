@@ -9,7 +9,8 @@
     "shot": "node scripts/shot.mjs",
     "postinstall": "node scripts/vendor.mjs",
     "osm": "node scripts/osm.mjs 47.371 8.278 47.399 8.312",
-    "scene": "node scripts/build-scene.mjs"
+    "scene": "node scripts/build-scene.mjs",
+    "av": "node scripts/av.mjs"
   },
   "repository": {
     "type": "git",
@@ -30,6 +31,7 @@
   },
   "private": true,
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "jpeg-js": "^0.4.4"
   }
 }

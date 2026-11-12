@@ -160,6 +160,17 @@
     if (map.streetDist(x, z) > 0.5) placeStatic(M.table(), x, 0, z, zkey(x, z));
   });
 
+  // ---------- Buurehuus: bench by the door, sitting place with round table ----------
+  if (map.farmProps) {
+    const { bench, table } = map.farmProps;
+    const brec = M.bench(bench.heading);
+    pickables.push({ sprite: placeStatic(brec, bench.x, 0, bench.z, zkey(bench.x, bench.z)), rec: brec,
+      info: { name: 'Bänkli', lines: ['Es Bänkli vor em Buurehuus.', "Do hocked d'Mina am liebschte. ☀️"], sound: 'click', top: { x: bench.x, y: 1.4, z: bench.z } } });
+    const trec = M.sitzplatz();
+    pickables.push({ sprite: placeStatic(trec, table.x, 0, table.z, zkey(table.x, table.z)), rec: trec,
+      info: { name: 'Sitzplatz', lines: ['De Sitzplatz – zäme brätle, zäme vibe-code.', 'Do wird am Abig gschwätzt.'], sound: 'click', top: { x: table.x, y: 1.6, z: table.z } } });
+  }
+
   // ---------- ground: terrain codes (top-down, 2 cells / m) painted lazily into screen-aligned chunks ----------
   const TM = 2, MARGIN = 240;
   const tx0 = bx0 - MARGIN, tz0 = bz0 - MARGIN;
