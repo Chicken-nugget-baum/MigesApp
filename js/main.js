@@ -515,6 +515,7 @@
   }
   const clickCount = new Map();
   let dairyClicks = 0, dairyLast = 0;
+  const knocks = new Map(); // building -> { n, t } knocks in a row
   function clickBuilding(b) {
     let text;
     const E = NB.Entities;
@@ -525,6 +526,15 @@
       if (dairyClicks >= 7 && E.startFire(b)) { NB.UI.say(b.top, 'Hey, nid so fescht! … Füür! FÜÜR! 🔥'); NB.Audio.play('fire', { pos: b.top }); dairyClicks = 0; return; }
       if (dairyClicks === 4) { NB.UI.say(b.top, 'Hey, nid so fescht klopfe! Das Huus isch neu!'); NB.Audio.play('door', { pos: b.top }); return; }
       if (dairyClicks === 6) { NB.UI.say(b.top, 'Es schmöckt irgendwie verbrännt… 👃'); NB.Audio.play('door', { pos: b.top }); return; }
+    }
+    // knock three times (within a few seconds) and whoever is at home comes to the door
+    const now = performance.now() / 1000, kn = knocks.get(b);
+    const knock = kn && now - kn.t < 4 ? kn.n + 1 : 1; knocks.set(b, { n: knock, t: now });
+    if (knock >= 3 && b.inside.size && b.kind !== 'chapel') {
+      knocks.delete(b);
+      NB.Audio.play('knock', { pos: b.top }); NB.UI.say(b.top, 'Klopf, klopf, klopf! 🚪');
+      setTimeout(() => { E.answerDoor(b); }, 900);
+      return;
     }
     if (b.inside.size) {
       const who = [...b.inside].map((v) => v.name).join(' und ');

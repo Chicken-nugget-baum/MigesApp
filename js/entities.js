@@ -877,6 +877,26 @@
     top() { return { x: this.x, y: 2.4, z: this.z }; }
   }
   E.fire = null;
+  // Knocking three times: everyone inside comes out to the door, says something (grumpy at night), waits a
+  // moment (waving when facing the viewer) and goes back in - their routine still says "home".
+  const DOOR_DAY = ['Jo? Wer isch do?', 'Hoi! Was gits?', 'Grüezi! Chömed doch ine.', 'Ah, du bisch es! 😊', 'Momänt, ich chume!'];
+  const DOOR_NIGHT = ['Wer klopft do mitten i de Nacht?! 😠', 'Mir schlofed! 💤', "Gaht's no?!", "Was isch los? Brönnt's?"];
+  E.answerDoor = function (b) {
+    const people = [...b.inside].filter((v) => v.kind === 'villager');
+    if (!people.length) return false;
+    const night = NB.inWindow(NB.clock.minutes(), '22:00', '06:30');
+    const n = b.doorN, t = [-n[1], n[0]];
+    people.forEach((v, k) => {
+      v.leave();
+      const off = (k - (people.length - 1) / 2) * 0.9;
+      v.x = b.entryPt.x + n[0] * 0.8 + t[0] * off; v.z = b.entryPt.z + n[1] * 0.8 + t[1] * off;
+      v.heading = I.towardCamera; v.path = null; v.goalKey = null;
+      v.pause = NB.rr(6, 9) + k * 0.8; v.hop = 0.35;
+      const line = NB.pick((night ? v.c.doorNight : v.c.doorLines) || (night ? DOOR_NIGHT : DOOR_DAY));
+      setTimeout(() => { if (!v.inside) { say(v, line); if (NB.UI.onScreen(v)) NB.Audio.babble(line, v.c.voice, { pos: v }); } }, 350 + k * 700);
+    });
+    return true;
+  };
   E.startFire = function (b) {
     if (E.fire || !map.parkings || !map.parkings.dairy) return false;
     const F = (E.fire = { b, t: 0, intensity: 1, phase: 'burning', truck: null, crew: [], sirenT: 0, fxT: 0 });
