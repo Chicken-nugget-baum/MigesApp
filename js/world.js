@@ -2,6 +2,7 @@
 // Units: metres, x = east, z = south.
 (function (NB) {
   const S = NB.Scene;
+  S.buildings.forEach((b) => NB.Iso.snapBuilding(b)); // iso pixel art: buildings sit on the iso grid, doors on a visible face
   const C = 2; // metres per path-finding cell
   const [bx0, bz0, bx1, bz1] = S.bounds;
   const W = Math.ceil((bx1 - bx0) / C), H = Math.ceil((bz1 - bz0) / C);

@@ -1,12 +1,20 @@
-// Everything that moves (3D): villagers, cats, the Postauto and cars. Units: metres, x = east, z = south.
+// Everything that moves: villagers, cats, the Postauto and cars. Units: metres, x = east, z = south.
+// Each entity owns a PIXI.Sprite (`sprite`) and the sprite record of its current frame (`frame`, for picking).
 (function (NB) {
-  const THREE = window.THREE;
+  const I = NB.Iso;
   const map = NB.map;
   const E = (NB.Entities = { list: [] });
-  const add = (e) => { E.list.push(e); if (e.model) NB.world3d.add(e.model); return e; };
+  const add = (e) => { E.list.push(e); if (e.sprite) NB.world.add(e.sprite); return e; };
   const say = (who, text, o) => NB.UI && NB.UI.say(who, text, o);
   const angleLerp = (a, b, t) => { let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI; if (d < -Math.PI) d += Math.PI * 2; return a + d * t; };
-  const tag = (model, e) => model.traverse((o) => { o.userData.entity = e; });
+  // place a sprite record at world (x, y, z); depth-sorted against buildings
+  function place(e, rec, x, y, z) {
+    const p = I.project(x, y, z), s = e.sprite;
+    e.frame = rec;
+    if (s.texture !== rec.tex) s.texture = rec.tex;
+    s.x = Math.round(p[0]) - rec.ox; s.y = Math.round(p[1]) - rec.oy;
+    s.zIndex = NB.world.zkey(x, z);
+  }
 
   // ---------------------------------------------------------------- movement on the walk grid
   class Mover {
@@ -56,7 +64,7 @@
       const home = map.buildings[c.home];
       super(home.entryPt.x, home.entryPt.z, map.walkCost, NB.rr(1.3, 1.6));
       this.c = c; this.kind = 'villager'; this.name = c.name; this.home = home;
-      this.model = NB.Models.person(c.look || {}); tag(this.model, this);
+      this.frames = NB.Models.person(c.look || {}); this.sprite = new PIXI.Sprite(); this.shown = 0;
       c._routine = (c.routine || []).slice().sort((a, b) => NB.toMin(a.at) - NB.toMin(b.at));
       this.inside = false; this.wait = NB.rr(0, 3); this.pause = 0; this.hop = 0;
       this.clicks = 0; this.lastClick = -99; this.chatCd = NB.rr(10, 30); this.favUntil = 0; this.fav = null;
@@ -110,15 +118,16 @@
       this.pose(dt);
     }
     pose(dt) {
-      const m = this.model, p = m.userData.parts;
-      m.visible = !this.inside;
-      m.position.set(this.x, this.hopY(), this.z);
-      m.rotation.y = angleLerp(m.rotation.y, this.heading, Math.min(1, dt * 10));
-      const sw = this.moving ? Math.sin(this.anim * 9) * 0.6 : 0;
-      p.legL.rotation.x = sw; p.legR.rotation.x = -sw; p.armL.rotation.x = -sw * 0.8; p.armR.rotation.x = sw * 0.8;
-      p.body.position.y = 0.66 + (this.moving ? Math.abs(Math.sin(this.anim * 9)) * 0.05 : 0);
-      if (this.pause > 0 && this.hop <= 0) p.armR.rotation.z = Math.sin(performance.now() / 120) * 0.4 + 2.4; // wave
-      else p.armR.rotation.z = 0;
+      const s = this.sprite;
+      s.visible = !this.inside;
+      if (this.inside) return;
+      this.shown = angleLerp(this.shown, this.heading, Math.min(1, dt * 10));
+      const f = I.facing(this.shown);
+      const view = f === 's' || f === 'se' || f === 'sw' ? 'down' : f === 'n' || f === 'ne' || f === 'nw' ? 'up' : f === 'e' ? 'right' : 'left';
+      let rec;
+      if (this.pause > 0 && this.hop <= 0 && view === 'down') rec = this.frames.wave[Math.floor(performance.now() / 220) % 2]; // wave
+      else rec = this.frames[view][this.moving ? [1, 0, 2, 0][Math.floor(this.anim * 7) % 4] : 0];
+      place(this, rec, this.x, this.hopY(), this.z);
     }
     chat() {
       const other = E.list.find((o) => o !== this && o.kind === 'villager' && !o.inside && Math.hypot(o.x - this.x, o.z - this.z) < 5);
@@ -138,8 +147,7 @@
       say(this, line);
       NB.Audio.babble(line, this.c.voice, { pos: this });
       this.pause = 3.5; this.hop = 0.35;
-      // turn towards the camera
-      const cam = NB.camera.position; this.heading = Math.atan2(cam.x - this.x, cam.z - this.z);
+      this.heading = I.towardCamera; // turn towards the viewer
     }
     get visible() { return !this.inside; }
     hopY() { return this.hop > 0 ? Math.sin((this.hop / 0.35) * Math.PI) * 0.4 : 0; }
@@ -151,7 +159,7 @@
     constructor(a) {
       super(0, 0, map.animalCost, 1.4);
       this.a = a; this.kind = 'cat'; this.name = a.name; this.area = a.area;
-      this.model = NB.Models.cat(a.look || {}); tag(this.model, this);
+      this.frames = NB.Models.cat(a.look || {}); this.sprite = new PIXI.Sprite(); this.dir = 'right';
       this.state = 'idle'; this.timer = NB.rr(1, 6); this.clicks = 0; this.lastClick = -99; this.purrT = 0; this.held = false;
       const s = map.randomIn(this.area, this.cost) || map.start;
       this.x = s.x; this.z = s.z; this.heading = Math.random() * 6.28;
@@ -210,23 +218,12 @@
       }
     }
     pose(dt) {
-      const m = this.model, p = m.userData.parts, t = performance.now() / 1000;
       const zoom = this.state === 'zoom', moving = this.moving;
       const hop = zoom ? Math.abs(Math.sin(this.anim * 16)) * 0.12 + (this.hopT > 0 ? Math.sin((this.hopT / 0.3) * Math.PI) * 0.6 : 0) : 0;
-      m.position.set(this.x, hop, this.z);
-      m.rotation.y = angleLerp(m.rotation.y, this.heading, Math.min(1, dt * (zoom ? 18 : 8)));
-      const sit = this.state === 'sit' || this.state === 'idle' || this.purrT > 0 || this.held;
-      const sleep = this.state === 'sleep';
-      p.body.rotation.x = sit && !moving ? -0.45 : 0;
-      p.body.position.y = sleep ? 0.14 : sit && !moving ? 0.34 : 0.3;
-      p.legs.forEach((l, k) => {
-        l.visible = !sleep;
-        l.rotation.x = moving ? Math.sin(this.anim * (zoom ? 22 : 10) + (k % 2 ? Math.PI : 0) + (k > 1 ? Math.PI / 2 : 0)) * 0.7 : 0;
-      });
-      p.head.rotation.x = sit && !moving ? 0.45 : 0;
-      p.head.position.y = sleep ? 0.05 : 0.2;
-      p.tail.rotation.x = sleep ? 1.2 : zoom ? -0.6 : Math.sin(t * 2 + this.x) * 0.25 - 0.3;
-      p.tail.rotation.y = Math.sin(t * (this.purrT > 0 || this.held ? 6 : 1.5)) * 0.4;
+      if (moving) { const f = I.facing(this.heading); if (f === 'e' || f === 'se' || f === 'ne') this.dir = 'right'; else if (f === 'w' || f === 'sw' || f === 'nw') this.dir = 'left'; }
+      const F = this.frames;
+      const set = moving ? F.walk[Math.floor(this.anim * (zoom ? 14 : 6)) % 2] : this.state === 'sleep' ? F.sleep : F.sit;
+      place(this, set[this.dir], this.x, hop, this.z);
     }
     click() {
       const now = performance.now() / 1000;
@@ -264,7 +261,7 @@
       const base = map.route.slice(); if (reverse) base.reverse();
       this.pts = laneOffset(base, 1.5);
       this.x = this.pts[0].x; this.z = this.pts[0].z; this.i = 1; this.heading = 0; this.life = 0;
-      this.model = type === 'bus' ? NB.Models.bus() : NB.Models.car(NB.pick(CAR_COLORS)); tag(this.model, this);
+      this.color = NB.pick(CAR_COLORS); this.sprite = new PIXI.Sprite(); this.shown = null;
       this.maxSpeed = type === 'bus' ? 7 : NB.rr(8, 10);
       this.speed = this.maxSpeed; this.stopT = 0; this.done = false;
       this.name = type === 'bus' ? 'Postauto' : 'Auto';
@@ -278,7 +275,7 @@
     update(dt) {
       this.life += dt;
       const p = this.pts[this.i];
-      if (!p) { this.done = true; NB.world3d.remove(this.model); return; }
+      if (!p) { this.done = true; NB.world.remove(this.sprite); return; }
       if (this.stopT > 0) { this.stopT -= dt; if (this.stopT <= 0 && NB.UI.onScreen(this) && NB.Env.darkness < 0.7) NB.Audio.horn({ pos: this }); return this.pose(dt); }
       const dx = p.x - this.x, dz = p.z - this.z, d = Math.hypot(dx, dz);
       if (d > 0.01) this.heading = Math.atan2(dx, dz);
@@ -296,13 +293,11 @@
       this.pose(dt);
     }
     pose(dt) {
-      const m = this.model;
-      m.position.set(this.x, 0, this.z);
-      m.rotation.y = angleLerp(m.rotation.y, this.heading, Math.min(1, dt * 6));
-      // appear / disappear smoothly at the ends of the street
+      this.shown = this.shown == null ? this.heading : angleLerp(this.shown, this.heading, Math.min(1, dt * 6));
+      place(this, NB.Models.vehicle(this.type, this.color, this.shown), this.x, 0, this.z);
+      // fade in / out at the ends of the street
       const left = this.pts.length - this.i;
-      const s = Math.min(1, this.life / 0.8, left < 2 ? Math.max(0.01, left / 2) : 1);
-      m.scale.setScalar(Math.max(0.01, s));
+      this.sprite.alpha = Math.min(1, this.life / 0.8, left < 2 ? Math.max(0, left / 2) : 1);
     }
     click() {
       if (this.type === 'bus') { say(this, NB.pick(['Tü-ta-to! 🎺', 'Nöchsti Halt: Nesselnbach, Mitteldorf.', 'Bitte iistiige!'])); NB.Audio.horn({ pos: this }); }

@@ -9,7 +9,7 @@ const browsers = [
   process.env.CHROME,
   'C:/Program Files/Google/Chrome/Application/chrome.exe',
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  '/usr/bin/google-chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
 ].filter(Boolean);
 const browser = browsers.find((b) => existsSync(b));
 if (!browser) { console.error('No Chrome/Edge found (set CHROME=...)'); process.exit(1); }

@@ -25,8 +25,8 @@
   "homepage": "https://github.com/Chicken-nugget-baum/migesApp#readme",
   "dependencies": {
     "@fontsource/nunito": "^5.3.0",
-    "three": "^0.187.0",
-    "zzfx": "^1.4.0"
+    "pixi.js": "^8.23.0",
+        "zzfx": "^1.4.0"
   },
   "private": true,
   "devDependencies": {

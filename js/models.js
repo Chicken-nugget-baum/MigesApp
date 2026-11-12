@@ -1,327 +1,407 @@
-// Low-poly 3D models (three.js). Everything faces +z ("south") by default. Units: metres.
+// Isometric pixel-art models. Buildings, lamps, shelters and vehicles are box models rendered by NB.Iso
+// (crisp iso faces + outlines); trees, people and cats are hand-drawn pixel sprites (billboards).
+// Every model returns a sprite record { tex, w, h, ox, oy, mask, light? } - (ox, oy) is the ground anchor pixel.
 (function (NB) {
-  const THREE = window.THREE;
-  const M = (NB.Models = {});
-  const SEASON = NB.season;
-
-  // ---------- materials (cached by colour) ----------
-  const mats = {};
-  const mat = (color, opts) => {
-    const key = color + (opts ? JSON.stringify(opts) : '');
-    if (!mats[key]) mats[key] = new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.9, metalness: 0, flatShading: true }, opts));
-    return mats[key];
-  };
-  M.mat = mat;
-  function mesh(geo, material, shadow) {
-    const m = new THREE.Mesh(geo, material);
-    m.castShadow = shadow !== false; m.receiveShadow = true;
-    return m;
-  }
-  const box = (w, h, d, color) => mesh(new THREE.BoxGeometry(w, h, d), typeof color === 'string' ? mat(color) : color);
-  M.box = box;
+  const I = NB.Iso, M = (NB.Models = {}), SEASON = NB.season;
 
   // ---------- palettes ----------
   const WALLS = ['#f6ead2', '#f3e2cf', '#fbf5ea', '#efe3c6', '#f6dfd2', '#e9e4da', '#f4ecd9', '#dfe9e4'];
   const ROOFS = ['#c8644a', '#b05440', '#d27a52', '#8a5a48', '#9b4f3e', '#6f7486', '#c66b4e'];
   const DOORS = ['#e05a6e', '#4f8fd6', '#5bb07a', '#e8a33a', '#9a6ad0', '#a8673a'];
   const SHUTTERS = ['#4f9a6a', '#c0503f', '#4f7fbf', '#4f9a6a', null];
-  const LEAF = {
-    spring: ['#7ccf8a', '#5dbb73', '#ffb3c8'], summer: ['#5fbf75', '#4aa862', '#7fd38e'],
-    autumn: ['#f0a24c', '#e07b3c', '#f7c46a'], winter: ['#e8eef4', '#dfe8f0', '#ffffff'],
-  }[SEASON] || ['#5fbf75', '#4aa862', '#7fd38e'];
-  M.leaf = LEAF;
-
-  // gable roof as a triangular prism, ridge along x
-  function gableRoof(w, d, h, color) {
-    const g = new THREE.BufferGeometry();
-    const x = w / 2, z = d / 2;
-    const v = [
-      -x, 0, -z, x, 0, -z, x, h, 0, -x, h, 0, // back slope
-      -x, 0, z, -x, h, 0, x, h, 0, x, 0, z, // front slope
-      -x, 0, -z, -x, h, 0, -x, 0, z, // left gable
-      x, 0, -z, x, 0, z, x, h, 0, // right gable
-      -x, 0, -z, -x, 0, z, x, 0, z, x, 0, -z, // bottom
-    ];
-    const idx = [0, 2, 1, 0, 3, 2, 4, 6, 5, 4, 7, 6, 8, 10, 9, 11, 13, 12, 14, 15, 16, 14, 16, 17];
-    g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
-    g.setIndex(idx);
-    g.computeVertexNormals();
-    return mesh(g, mat(color));
-  }
-  // hipped roof (pyramid-ish), ridge along x
-  function hipRoof(w, d, h, color) {
-    const g = new THREE.BufferGeometry();
-    const x = w / 2, z = d / 2, r = Math.max(0, x - z);
-    const v = [-x, 0, -z, x, 0, -z, x, 0, z, -x, 0, z, -r, h, 0, r, h, 0];
-    const idx = [0, 4, 5, 0, 5, 1, 1, 5, 2, 2, 5, 4, 2, 4, 3, 3, 4, 0, 0, 1, 2, 0, 2, 3];
-    g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
-    g.setIndex(idx);
-    g.computeVertexNormals();
-    return mesh(g, mat(color));
-  }
+  const FLOWERS = ['#ff7aa8', '#ffffff', '#ffd23f', '#ff5d73'];
+  const PAL = {
+    spring: { leaf: ['#5fae4a', '#468f37', '#86cc66'], pine: ['#2f6b3a', '#245a2f', '#3f8048'], blossom: ['#ffb3c8', '#f7a1bb', '#ffd0dd'], snow: false },
+    summer: { leaf: ['#4f9a3c', '#3c7f2e', '#6cb34f'], pine: ['#2f6b3a', '#245a2f', '#3f8048'], snow: false },
+    autumn: { leaf: ['#d9822b', '#b85a1f', '#eab046'], pine: ['#2f6b3a', '#245a2f', '#3f8048'], snow: false },
+    winter: { leaf: ['#e3ebf2', '#c3d1de', '#ffffff'], pine: ['#2d5f3c', '#22502f', '#3a7348'], snow: true },
+  };
+  const P = (M.pal = PAL[SEASON] || PAL.summer);
+  const WINDOW_LIGHT = '#ffd27a';
 
   // ---------- houses ----------
-  // b: { cx, cz, w, d, angle, levels, kind, roof, doorN, seed }
+  // b: snapped building spec { cx, cz, w (along u), d (along v), levels, kind, roof, face ('u'|'v') }
   M.house = function (b, i) {
-    const grp = new THREE.Group();
-    const floorH = 2.9, small = b.kind === 'garage';
+    const m = I.model();
+    const small = b.kind === 'garage', chapel = b.kind === 'chapel', floorH = 2.9;
     const H = small ? 2.8 : b.levels * floorH + 0.6;
-    const wall = b.kind === 'chapel' ? '#fbf8f2' : small ? '#d9d2c6' : WALLS[i % WALLS.length];
-    const roofCol = SEASON === 'winter' ? (i % 3 ? '#f4f7fb' : '#e9eef5') : b.kind === 'chapel' ? '#6f7486' : small ? '#8a8f9c' : ROOFS[(i * 3) % ROOFS.length];
     const w = Math.max(3, b.w), d = Math.max(3, b.d);
-    // body + stone base
-    const body = box(w, H, d, wall); body.position.y = H / 2; grp.add(body);
-    if (!small) { const base = box(w + 0.08, 0.7, d + 0.08, '#b9b0a6'); base.position.y = 0.35; grp.add(base); }
-    // roof
+    const wall = chapel ? '#fbf8f2' : small ? '#d9d2c6' : WALLS[i % WALLS.length];
+    const roofCol = P.snow ? (i % 3 ? '#f4f7fb' : '#e9eef5') : chapel ? '#6f7486' : small ? '#8a8f9c' : ROOFS[(i * 3) % ROOFS.length];
     const over = small ? 0.2 : 0.6;
-    const rh = small ? 0.6 : b.kind === 'chapel' ? d * 0.75 : Math.min(5.5, d * 0.42);
-    const roof = small && b.roof !== 'gabled' ? box(w + 0.3, 0.3, d + 0.3, roofCol)
-      : b.roof === 'hipped' ? hipRoof(w + over * 2, d + over * 2, rh, roofCol) : gableRoof(w + over * 2, d + over * 2, rh, roofCol);
-    roof.position.y = H + (small && b.roof !== 'gabled' ? 0.15 : 0);
-    grp.add(roof);
-    // chimney
-    if (!small && b.kind === 'house' && i % 3 !== 2) { const c = box(0.7, 1.6, 0.7, '#a8604c'); c.position.set(w * 0.25, H + rh * 0.55, -d * 0.15); grp.add(c); }
+    const flat = small && b.roof !== 'gabled';
+    const rh = flat ? 0.3 : small ? 0.6 : chapel ? Math.min(w, d) * 0.7 : Math.min(5.5, Math.min(w, d) * 0.42);
+    m.shadow(-w / 2, -d / 2, w, d, H + rh * 0.5);
+    m.box(-w / 2, -d / 2, 0, w, d, H, wall);
+    if (!small) m.box(-w / 2 - 0.08, -d / 2 - 0.08, 0, w + 0.16, d + 0.16, 0.7, '#b9b0a6');
+    // roof (ridge along the longer side)
+    const along = w >= d ? 'u' : 'v';
+    if (flat) m.cbox(0, 0, H, w + 0.3, d + 0.3, rh, roofCol);
+    else if (b.roof === 'hipped') m.hip(-w / 2 - over, -d / 2 - over, H, w + over * 2, d + over * 2, rh, roofCol);
+    else m.gable(-w / 2 - over, -d / 2 - over, H, w + over * 2, d + over * 2, rh, along, roofCol);
+    // chimney on a visible slope
+    if (!small && b.kind === 'house' && i % 3 !== 2) {
+      const cu = along === 'u' ? w * 0.2 : w * 0.25, cv = along === 'u' ? d * 0.25 : -d * 0.2;
+      m.cbox(cu, cv, H + rh * 0.55, 0.7, 0.7, 1.2, '#a8604c');
+    }
 
-    // windows (shared per-house material so they can light up at night)
-    const winMat = new THREE.MeshStandardMaterial({ color: '#6aa4d8', roughness: 0.4, emissive: '#ffcf7a', emissiveIntensity: 0 });
-    grp.userData.windowMat = winMat;
-    const frame = mat('#ffffff');
+    // windows on the two visible faces (+u right, +v left); glass lights up at night (light layer)
     const shutter = SHUTTERS[i % SHUTTERS.length];
-    const addWindow = (x, y, z, rotY) => {
-      const f = box(1.15, 1.35, 0.08, frame); f.castShadow = false;
-      const gl = mesh(new THREE.BoxGeometry(0.9, 1.1, 0.1), winMat, false);
-      const wg = new THREE.Group(); wg.add(f); wg.add(gl);
-      if (shutter && !small) { const sl = box(0.35, 1.35, 0.08, shutter), sr = sl.clone(); sl.position.x = -0.8; sr.position.x = 0.8; wg.add(sl, sr); }
-      if (!small && y < 2.5 && SEASON !== 'winter') {
-        const bx = box(1.2, 0.25, 0.3, '#a8673a'); bx.position.set(0, -0.8, 0.15); wg.add(bx);
-        const fl = box(1.1, 0.18, 0.22, ['#ff7aa8', '#ffffff', '#ffd23f', '#ff5d73'][i % 4]); fl.position.set(0, -0.62, 0.15); wg.add(fl);
-      }
-      wg.position.set(x, y, z); wg.rotation.y = rotY; grp.add(wg);
+    const flower = FLOWERS[i % FLOWERS.length];
+    const faceBox = (axis, p, off, across, y, dep, len, h, col, o) =>
+      axis === 'u' ? m.box(w / 2 + off, p + across - len / 2, y, dep, len, h, col, o) : m.box(p + across - len / 2, d / 2 + off, y, len, dep, h, col, o);
+    const addWindow = (axis, p, yc, ground) => {
+      faceBox(axis, p, 0, 0, yc - 0.675, 0.08, 1.15, 1.35, '#ffffff');
+      faceBox(axis, p, 0.02, 0, yc - 0.55, 0.1, 0.9, 1.1, '#6aa4d8', { light: WINDOW_LIGHT, noOutline: true });
+      if (shutter && !small) { faceBox(axis, p, 0, -0.8, yc - 0.675, 0.08, 0.35, 1.35, shutter); faceBox(axis, p, 0, 0.8, yc - 0.675, 0.08, 0.35, 1.35, shutter); }
+      if (!small && ground && !P.snow) { faceBox(axis, p, 0, 0, yc - 0.95, 0.3, 1.2, 0.25, '#a8673a'); faceBox(axis, p, 0.06, 0, yc - 0.72, 0.22, 1.1, 0.18, flower, { noOutline: true }); }
     };
+    const doorAxis = b.face || 'v';
     if (!small) {
-      const nW = Math.max(1, Math.floor((w - 1.5) / 3)), nD = Math.max(1, Math.floor((d - 1.5) / 3.2));
-      const levels = b.kind === 'chapel' ? 1 : b.levels;
-      for (let lv = 0; lv < levels; lv++) {
-        const y = (b.kind === 'chapel' ? 2.6 : 1.7 + lv * floorH);
-        for (let k = 0; k < nW; k++) {
-          const x = -w / 2 + ((k + 0.5) * w) / nW;
-          addWindow(x, y, d / 2 + 0.05, 0); addWindow(x, y, -d / 2 - 0.05, Math.PI);
-        }
-        for (let k = 0; k < nD; k++) {
-          const z = -d / 2 + ((k + 0.5) * d) / nD;
-          addWindow(w / 2 + 0.05, y, z, Math.PI / 2); addWindow(-w / 2 - 0.05, y, z, -Math.PI / 2);
+      const levels = chapel ? 1 : b.levels;
+      for (const axis of ['u', 'v']) {
+        const len = axis === 'u' ? d : w;
+        const n = Math.max(1, Math.floor((len - 1.5) / 3.1));
+        for (let lv = 0; lv < levels; lv++) {
+          const y = chapel ? 2.6 : 1.7 + lv * floorH;
+          for (let k = 0; k < n; k++) {
+            const p = -len / 2 + ((k + 0.5) * len) / n;
+            if (lv === 0 && axis === doorAxis && Math.abs(p) < 1.6) continue; // leave room for the door
+            if (chapel && axis === 'u') continue; // the tower end
+            addWindow(axis, p, y, lv === 0);
+          }
         }
       }
     }
-    // door on the side facing the street (doorN is in world space -> convert to local)
-    const ca = Math.cos(b.angle), sa = Math.sin(b.angle);
-    const ln = [b.doorN[0] * ca + b.doorN[1] * sa, -b.doorN[0] * sa + b.doorN[1] * ca]; // world -> local (rotation by -angle)
-    const along = Math.abs(ln[0]) > Math.abs(ln[1]);
-    const dg = new THREE.Group();
-    const doorCol = small ? '#e4e0d8' : b.kind === 'chapel' ? '#7a4a2a' : DOORS[i % DOORS.length];
-    const dw = small ? Math.min(2.6, (along ? d : w) - 0.6) : 1.1, dh = small ? 2.2 : 2.1;
-    const door = box(dw, dh, 0.12, doorCol); door.position.y = dh / 2;
-    dg.add(door);
-    if (!small) { const step = box(1.6, 0.18, 0.6, '#c9c0b6'); step.position.set(0, 0.09, 0.3); dg.add(step); const knob = box(0.1, 0.1, 0.1, '#f2c23a'); knob.position.set(0.35, 1.05, 0.08); dg.add(knob); }
-    if (along) { dg.position.set(Math.sign(ln[0]) * (w / 2 + 0.06), 0, 0); dg.rotation.y = Math.sign(ln[0]) * Math.PI / 2; }
-    else { dg.position.set(0, 0, Math.sign(ln[1]) * (d / 2 + 0.06)); dg.rotation.y = ln[1] > 0 ? 0 : Math.PI; }
-    grp.add(dg);
-
-    // chapel: bell tower with spire and cross on the street-facing end
-    if (b.kind === 'chapel') {
-      const tw = 2.4, th = H + rh + 2.5;
-      const tower = box(tw, th, tw, '#fbf8f2'); tower.position.set(-w / 2 + tw / 2 + 0.2, th / 2, 0); grp.add(tower);
-      const bellWin = box(tw + 0.05, 0.9, 0.6, '#3a3a48'); bellWin.position.set(tower.position.x, th - 1, 0); grp.add(bellWin);
-      const spire = mesh(new THREE.ConeGeometry(tw * 0.78, 3.6, 4), mat('#5b6070')); spire.rotation.y = Math.PI / 4; spire.position.set(tower.position.x, th + 1.8, 0); grp.add(spire);
-      const c1 = box(0.12, 1.1, 0.12, '#e8c547'), c2 = box(0.6, 0.12, 0.12, '#e8c547');
-      c1.position.set(tower.position.x, th + 4.1, 0); c2.position.set(tower.position.x, th + 4.2, 0); grp.add(c1, c2);
-      grp.userData.bellTop = th + 1;
+    // door on the street-facing visible face
+    const doorCol = small ? '#e4e0d8' : chapel ? '#7a4a2a' : DOORS[i % DOORS.length];
+    const faceLen = doorAxis === 'u' ? d : w;
+    const dw = small ? Math.min(2.6, faceLen - 0.6) : 1.1, dh = small ? 2.2 : 2.1;
+    const doorP = chapel ? 0 : 0;
+    faceBox(doorAxis, doorP, 0, 0, 0, 0.12, dw, dh, doorCol);
+    if (!small) {
+      faceBox(doorAxis, doorP, 0, 0, 0, 0.6, 1.6, 0.18, '#c9c0b6');
+      faceBox(doorAxis, doorP, 0.1, 0.32, 1.0, 0.1, 0.12, 0.12, '#f2c23a', { noOutline: true });
     }
-    // Beiz: sign above the door
     if (b.kind === 'beiz') {
-      const sign = box(1.8, 0.7, 0.12, '#c0392b'); sign.position.y = 3; sign.position.z = 0.1; dg.add(sign);
-      const txt = box(1.4, 0.15, 0.14, '#fff6dc'); txt.position.set(0, 3, 0.12); dg.add(txt);
+      faceBox(doorAxis, doorP, 0, 0, 2.65, 0.14, 1.9, 0.7, '#c0392b');
+      faceBox(doorAxis, doorP, 0.14, 0, 2.92, 0.06, 1.4, 0.16, '#fff6dc', { noOutline: true });
     }
-    grp.position.set(b.cx, 0, b.cz);
-    grp.rotation.y = -b.angle;
-    grp.userData.height = H + rh;
-    return grp;
+    // chapel: bell tower at the +u end, with spire and cross
+    let bellTop = 0;
+    if (chapel) {
+      const tw = 2.4, th = H + rh + 2.5, tu = w / 2 - tw / 2 - 0.2;
+      m.cbox(tu, 0, 0, tw, tw, th, '#fbf8f2');
+      m.box(tu + tw / 2, -0.35, th - 1.6, 0.1, 0.7, 1.0, '#3a3a48');
+      m.box(tu - 0.35, tw / 2, th - 1.6, 0.7, 0.1, 1.0, '#3a3a48');
+      m.pyramid(tu - tw * 0.6, -tw * 0.6, th, tw * 1.2, tw * 1.2, 3.6, '#5b6070');
+      m.cbox(tu, 0, th + 3.5, 0.14, 0.14, 1.1, '#e8c547', { noOutline: true });
+      m.cbox(tu, 0, th + 4.1, 0.6, 0.14, 0.14, '#e8c547', { noOutline: true });
+      bellTop = th + 1;
+    }
+    const r = m.render();
+    r.height = H + rh; r.bellTop = bellTop;
+    return r;
   };
 
-  // ---------- nature ----------
-  M.tree = function (rnd, kind) {
-    const g = new THREE.Group();
-    if (kind === 'pine') {
-      const t = box(0.35, 1.2, 0.35, '#7a5236'); t.position.y = 0.6; g.add(t);
-      const col = SEASON === 'winter' ? '#3d8a66' : '#3f9a6a';
-      [[2.2, 2.6, 1.6], [1.7, 2.2, 3.0], [1.1, 1.8, 4.2]].forEach(([r, h, y]) => { const c = mesh(new THREE.ConeGeometry(r, h, 7), mat(col)); c.position.y = y; g.add(c); });
-      if (SEASON === 'winter') { const s = mesh(new THREE.ConeGeometry(0.8, 1, 7), mat('#ffffff')); s.position.y = 5; g.add(s); }
-    } else {
-      const h = 1.6 + rnd() * 0.8;
-      const t = mesh(new THREE.CylinderGeometry(0.22, 0.32, h, 6), mat('#8a5a3a')); t.position.y = h / 2; g.add(t);
-      const blossom = SEASON === 'spring' && rnd() < 0.3;
-      const cols = blossom ? ['#ffb3c8', '#f7a1bb', '#ffd0dd'] : LEAF;
-      const n = 3 + ((rnd() * 2) | 0);
-      for (let k = 0; k < n; k++) {
-        const r = 1.1 + rnd() * 0.7;
-        const s = mesh(new THREE.IcosahedronGeometry(r, 0), mat(cols[k % cols.length]));
-        s.position.set((rnd() - 0.5) * 1.6, h + 0.9 + rnd() * 1.1, (rnd() - 0.5) * 1.6);
-        s.rotation.set(rnd() * 3, rnd() * 3, 0);
-        g.add(s);
+  // ---------- hand-drawn pixel helpers ----------
+  // draw(px(x, y, hex)) into a W x H canvas; shadow ellipse under the base; anchor = bottom centre
+  function art(W, H, draw, o) {
+    o = o || {};
+    const pix = new I.Pix(W + 2, H + 2 + 3), pad = 1;
+    const feet = pad + H;
+    if (o.shadow !== false) pix.ellipse(pix.w / 2 + (o.shadowX || 0), feet - 0.5, (o.shadowW || W) / 2 + 0.5, o.shadowH || 2.2, '#180f28', 70);
+    const px = (x, y, hex, a) => { const [r, g, b] = I.rgb(hex); pix.put(x + pad, y + pad, r, g, b, a); };
+    draw(px, (x, y, w, h, hex) => { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) px(i, j, hex); });
+    pix.outline(I.OUT);
+    return I.finish(pix, Math.floor(pix.w / 2), feet);
+  }
+
+  // ---------- trees, bushes ----------
+  const treeCache = {};
+  function blobTree(seed, blossom) {
+    const r = NB.seeded(seed), k = 1.5 + r() * 0.4, W = Math.round(22 * k), H = Math.round(28 * k);
+    const leaf = blossom ? P.blossom : P.leaf;
+    const cx = W / 2, crown = Math.round(21 * k);
+    return art(W, H, (px, rect) => {
+      const tw = Math.round(4 * k);
+      rect(Math.round(cx - tw / 2), crown - 5, tw, H - crown + 5, '#6b4a2e'); rect(Math.round(cx + tw / 2) - 1, crown - 5, 1, H - crown + 5, '#4f3520');
+      rect(Math.round(cx - tw / 2) - 1, H - 1, tw + 2, 1, '#4f3520');
+      const blobs = [[cx, 10 * k, (7.5 + r() * 1.5) * k], [cx - 4.5 * k, 12 * k, (4.5 + r()) * k], [cx + 4.5 * k, 12 * k, (4.5 + r()) * k], [cx, 5.5 * k, (4.5 + r()) * k], [cx - 2 * k, 15 * k, 4 * k], [cx + 2.5 * k, 14 * k, 4 * k]];
+      for (let y = 0; y < crown; y++) for (let x = 0; x < W; x++) {
+        let inside = false;
+        for (const [bx, by, br] of blobs) if ((x + 0.5 - bx) ** 2 + (y + 0.5 - by) ** 2 <= br * br) inside = true;
+        if (!inside) continue;
+        let col = leaf[0];
+        const dd = (x - cx) * 0.6 + (y - 9 * k);
+        if (dd > 4.5 * k) col = leaf[1]; else if (dd < -5 * k) col = leaf[2];
+        if (r() < 0.1) col = r() < 0.5 ? leaf[1] : leaf[2];
+        if (P.snow && y < (4 + r() * 3) * k) col = '#ffffff';
+        px(x, y, col);
       }
-    }
-    const sc = 0.85 + rnd() * 0.4;
-    g.scale.set(sc, sc, sc);
-    return g;
+      if (SEASON === 'autumn') for (let i = 0; i < 10; i++) px((r() * W) | 0, crown + 1 + ((r() * (H - crown - 2)) | 0), leaf[(r() * 3) | 0]);
+    }, { shadowW: Math.round(20 * k), shadowH: 3.5, shadowX: 3 });
+  }
+  function pineTree(seed) {
+    const r = NB.seeded(seed), k = 1.5 + r() * 0.4, W = Math.round(17 * k), H = Math.round(31 * k);
+    const cx = (W - 1) / 2;
+    return art(W, H, (px, rect) => {
+      rect(Math.round(cx - 1), Math.round(23 * k), 3, H - Math.round(23 * k), '#5b3d24');
+      const tiers = [[1, 11, 4.5], [6, 17, 6], [11, 24, 7.5]].map((t) => t.map((v) => v * k));
+      const inside = (x, y) => tiers.some(([top, bot, hw]) => y >= top && y <= bot && Math.abs(x - cx) <= ((y - top) / (bot - top)) * hw + 0.6);
+      for (let y = 0; y < Math.round(25 * k); y++) for (let x = 0; x < W; x++) {
+        if (!inside(x, y)) continue;
+        let col = x > cx ? P.pine[1] : P.pine[0];
+        if (x < cx - 1 && r() < 0.3) col = P.pine[2];
+        if (P.snow && !inside(x, y - 1)) col = '#f4f8fb'; else if (P.snow && r() < 0.1) col = '#e6eef4';
+        px(x, y, col);
+      }
+    }, { shadowW: Math.round(14 * k), shadowH: 3, shadowX: 3 });
+  }
+  M.tree = function (kind, variant) {
+    const key = kind + variant;
+    if (!treeCache[key]) treeCache[key] = kind === 'pine' ? pineTree(variant * 31 + 7) : blobTree(variant * 17 + 3, SEASON === 'spring' && variant % 4 === 0);
+    return treeCache[key];
   };
-  M.bush = function (rnd) {
-    const g = new THREE.Group();
-    for (let k = 0; k < 3; k++) {
-      const s = mesh(new THREE.IcosahedronGeometry(0.55 + rnd() * 0.3, 0), mat(LEAF[k % 2]));
-      s.position.set((k - 1) * 0.6, 0.45, (rnd() - 0.5) * 0.4); g.add(s);
+  M.bush = function (variant) {
+    const key = 'bush' + variant;
+    if (!treeCache[key]) {
+      const r = NB.seeded(variant * 13 + 5), W = 14, H = 9;
+      treeCache[key] = art(W, H, (px) => {
+        const blobs = [[4, 5, 3.6], [9.5, 5, 3.6], [7, 3, 3.2]];
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          if (!blobs.some(([bx, by, br]) => (x - bx) ** 2 + (y - by) ** 2 <= br * br)) continue;
+          let col = y < 3 ? P.leaf[2] : y > 6 ? P.leaf[1] : P.leaf[0];
+          if (!P.snow && SEASON !== 'autumn' && r() < 0.08) col = ['#ff7aa8', '#ffffff', '#ffd23f', '#c9b4ff'][(r() * 4) | 0];
+          if (P.snow && y < 2) col = '#ffffff';
+          px(x, y, col);
+        }
+      }, { shadowH: 1.8 });
     }
-    if (SEASON !== 'winter' && SEASON !== 'autumn' && rnd() < 0.7) {
-      const fc = ['#ff7aa8', '#ffffff', '#ffd23f', '#c9b4ff'][(rnd() * 4) | 0];
-      for (let k = 0; k < 4; k++) { const f = box(0.14, 0.14, 0.14, fc); f.castShadow = false; f.position.set((rnd() - 0.5) * 1.6, 0.85 + rnd() * 0.2, (rnd() - 0.5) * 0.6); g.add(f); }
-    }
-    return g;
+    return treeCache[key];
   };
+
+  // ---------- street furniture ----------
   M.lamp = function () {
-    const g = new THREE.Group();
-    const p = mesh(new THREE.CylinderGeometry(0.08, 0.1, 4, 6), mat('#4a3f45')); p.position.y = 2; g.add(p);
-    const headMat = new THREE.MeshStandardMaterial({ color: '#fff2c8', emissive: '#ffd27a', emissiveIntensity: 0, flatShading: true });
-    const head = mesh(new THREE.BoxGeometry(0.45, 0.35, 0.45), headMat, false); head.position.y = 4.1; g.add(head);
-    const cap = box(0.6, 0.12, 0.6, '#4a3f45'); cap.position.y = 4.33; g.add(cap);
-    g.userData.headMat = headMat;
-    return g;
+    if (!treeCache.lamp) {
+      const m = I.model();
+      m.cbox(0, 0, 0, 0.18, 0.18, 4, '#4a3f45');
+      m.cbox(0, 0, 3.9, 0.5, 0.5, 0.42, '#fff2c8', { light: '#ffe08a' });
+      m.cbox(0, 0, 4.3, 0.66, 0.66, 0.14, '#4a3f45');
+      treeCache.lamp = m.render();
+    }
+    return treeCache.lamp;
   };
-  M.busStop = function () {
-    const g = new THREE.Group();
-    const roof = box(3, 0.15, 1.4, '#55606e'); roof.position.y = 2.5; g.add(roof);
-    [[-1.4, -0.6], [1.4, -0.6]].forEach(([x, z]) => { const p = box(0.1, 2.5, 0.1, '#55606e'); p.position.set(x, 1.25, z); g.add(p); });
-    const glass = mesh(new THREE.BoxGeometry(2.8, 2.2, 0.05), new THREE.MeshStandardMaterial({ color: '#bfe3f5', transparent: true, opacity: 0.45 }), false);
-    glass.position.set(0, 1.3, -0.65); g.add(glass);
-    const bench = box(2, 0.12, 0.45, '#a8673a'); bench.position.set(0, 0.5, -0.35); g.add(bench);
-    const pole = box(0.08, 2.8, 0.08, '#55606e'); pole.position.set(1.9, 1.4, 0.3); g.add(pole);
-    const sign = box(0.6, 0.6, 0.06, '#ffd200'); sign.position.set(1.9, 2.8, 0.3); g.add(sign);
-    const h = box(0.35, 0.35, 0.08, '#2d7a3c'); h.position.set(1.9, 2.8, 0.31); g.add(h);
-    return g;
+  // bus shelter; local +z points away from the road (heading = direction road -> shelter)
+  M.busStop = function (heading) {
+    const m = I.model(heading);
+    m.shadow(-1.5, -0.7, 3, 1.4, 2.5);
+    [-1.4, 1.4].forEach((x) => m.cbox(x, 0.6, 0, 0.12, 0.12, 2.5, '#55606e'));
+    m.cbox(0, 0.65, 0.25, 2.8, 0.06, 2.1, '#bfe3f5');
+    m.cbox(0, 0.35, 0.45, 2, 0.45, 0.12, '#a8673a');
+    m.cbox(0, 0, 2.5, 3, 1.4, 0.15, '#55606e');
+    m.cbox(1.9, -0.3, 0, 0.08, 0.08, 2.8, '#55606e');
+    m.cbox(1.9, -0.3, 2.5, 0.6, 0.06, 0.6, '#ffd200');
+    m.cbox(1.9, -0.34, 2.62, 0.35, 0.04, 0.36, '#2d7a3c', { noOutline: true });
+    return m.render();
   };
   M.table = function () {
-    const g = new THREE.Group();
-    const top = mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.08, 10), mat('#a8673a')); top.position.y = 0.8; g.add(top);
-    const leg = box(0.1, 0.8, 0.1, '#6a4a32'); leg.position.y = 0.4; g.add(leg);
-    const pole = box(0.06, 2.4, 0.06, '#e9e4da'); pole.position.y = 1.2; g.add(pole);
-    const um = mesh(new THREE.ConeGeometry(1.4, 0.6, 8), mat('#d94a4a')); um.position.y = 2.4; g.add(um);
-    return g;
+    if (!treeCache.table) {
+      const m = I.model();
+      m.cbox(0, 0, 0, 0.1, 0.1, 0.76, '#6a4a32');
+      m.cbox(0, 0, 0.76, 1.2, 1.2, 0.08, '#a8673a');
+      m.cbox(0, 0, 0.84, 0.08, 0.08, 1.5, '#e9e4da');
+      m.pyramid(-1.3, -1.3, 2.1, 2.6, 2.6, 0.6, '#d94a4a');
+      treeCache.table = m.render();
+    }
+    return treeCache.table;
   };
 
-  // ---------- people (chibi) ----------
+  // ---------- vehicles (box models, 16 headings, cached) ----------
+  const vehCache = {};
+  const HEADINGS = 16;
+  M.vehicle = function (type, color, heading) {
+    const k = ((Math.round((heading / (Math.PI * 2)) * HEADINGS) % HEADINGS) + HEADINGS) % HEADINGS;
+    const key = type + color + k;
+    if (vehCache[key]) return vehCache[key];
+    const h = (k / HEADINGS) * Math.PI * 2;
+    const m = I.model(h);
+    const wheel = (x, z, r) => m.cbox(x, z, 0, 0.3, r * 2, r * 2, '#2a2a2e');
+    // thin panels on the four sides of a box (stripes, window bands) - never a wrapping box, whose top face
+    // would paint over the body
+    const panels = (cx, cz, y, w, d, h, color) => {
+      [-1, 1].forEach((sgn) => { m.cbox(cx + sgn * (w / 2 + 0.03), cz, y, 0.06, d, h, color, { noOutline: true }); m.cbox(cx, cz + sgn * (d / 2 + 0.03), y, w, 0.06, h, color, { noOutline: true }); });
+    };
+    if (type === 'bus') {
+      m.shadow(-1.25, -5, 2.5, 10, 2.4);
+      [[-1.2, 3.3], [1.2, 3.3], [-1.2, -3.3], [1.2, -3.3]].forEach(([x, z]) => wheel(x, z, 0.4));
+      m.cbox(0, 0, 0.4, 2.5, 10, 2.6, '#ffcc00');
+      panels(0, 0, 0.62, 2.5, 10, 0.26, '#d9302a');
+      panels(0, -0.4, 1.8, 2.5, 8.6, 0.9, '#2b3d55');
+      m.cbox(0, 5.03, 1.5, 2.3, 0.06, 1.2, '#2b3d55', { noOutline: true });
+      m.cbox(0, 0, 3.0, 2.3, 9.6, 0.2, '#f2f2ea');
+      [-0.8, 0.8].forEach((x) => m.cbox(x, 5.04, 0.8, 0.4, 0.06, 0.2, '#fff8c0', { noOutline: true, light: '#fff2a0' }));
+    } else {
+      m.shadow(-0.9, -2, 1.8, 4, 1.4);
+      [[-0.9, 1.3], [0.9, 1.3], [-0.9, -1.3], [0.9, -1.3]].forEach(([x, z]) => wheel(x, z, 0.36));
+      m.cbox(0, 0, 0.35, 1.8, 4, 0.8, color);
+      m.cbox(0, -0.2, 1.15, 1.6, 2.1, 0.7, color);
+      panels(0, -0.2, 1.25, 1.6, 2.1, 0.5, '#2b3d55');
+      [-0.55, 0.55].forEach((x) => m.cbox(x, 2.03, 0.75, 0.35, 0.06, 0.16, '#fff8c0', { noOutline: true, light: '#fff2a0' }));
+    }
+    return (vehCache[key] = m.render());
+  };
+
+  // mirror a finished sprite record horizontally
+  function flipRec(f) {
+    const [c, g] = NB.canvas(f.w, f.h);
+    g.translate(f.w, 0); g.scale(-1, 1); g.drawImage(f.canvas, 0, 0);
+    return I.wrap(c, f.w - 1 - f.ox, f.oy);
+  }
+
+  // ---------- people (hand-drawn, 10 px wide, 18 rows incl. 2 rows head-room) ----------
+  const FRONT = [
+    '..........', '..........',
+    '...hhhh...', '..hhhhhh..', '.hhhhhhhh.', '.hssssssh.', '.sesssses.', '.ssssssss.', '..ssmmss..',
+    '..tttttt..', '.tttttttt.', '.tttttttt.', '.stttttts.',
+    '..pppppp..', '..pppppp..', '..pp..pp..', '..pp..pp..', '..ff..ff..',
+  ];
+  const BACK = FRONT.slice();
+  BACK[5] = '.hhhhhhhh.'; BACK[6] = '.hhhhhhhh.'; BACK[7] = '.shhhhhhs.'; BACK[8] = '..ssssss..';
+  const SIDE = [
+    '..........', '..........',
+    '...hhhh...', '..hhhhhh..', '..hhhhhhh.', '..hhhssss.', '..hhssses.', '..hsssssss', '...sssmm..',
+    '...tttt...', '..tttttt..', '..tttttt..', '..tttstt..',
+    '...pppp...', '...pppp...', '...pppp...', '...pppp...', '...fffff..',
+  ];
+  const LEGS = {
+    front: [['..pp..pp..', '..pp..pp..', '..ff..ff..'], ['..pp..pp..', '..pp..ff..', '..ff......'], ['..pp..pp..', '..ff..pp..', '......ff..']],
+    side: [['...pppp...', '...pppp...', '...fffff..'], ['..pp..pp..', '.pp....pp.', '.ff....ff.'], ['...pppp...', '...pppp...', '...fffff..']],
+  };
+  const setCh = (rows, y, x, ch) => { rows[y] = rows[y].substring(0, x) + ch + rows[y].substring(x + 1); };
+  const setRow = (rows, y, s) => { rows[y] = s; };
+  function applyLook(rows, view, L) {
+    const isF = view === 'front', isB = view === 'back', isS = view === 'side';
+    switch (L.hairStyle) {
+      case 'long':
+        for (let y = 5; y <= 11; y++) {
+          if (isF) { setCh(rows, y, 0, 'h'); setCh(rows, y, 9, 'h'); }
+          if (isB) for (let x = 1; x <= 8; x++) setCh(rows, y, x, 'h');
+          if (isS) { setCh(rows, y, 1, 'h'); setCh(rows, y, 2, 'h'); }
+        }
+        break;
+      case 'bun':
+        if (!isS) { setRow(rows, 0, '...hhhh...'); setRow(rows, 1, '...hhhh...'); } else { setRow(rows, 1, '.hhh......'); setRow(rows, 2, '.hhhhhh...'); }
+        break;
+      case 'ponytail':
+        if (isS) { setCh(rows, 5, 1, 'h'); setCh(rows, 6, 0, 'h'); setCh(rows, 7, 0, 'h'); setCh(rows, 8, 1, 'h'); }
+        if (isB) { setCh(rows, 9, 4, 'h'); setCh(rows, 9, 5, 'h'); setCh(rows, 10, 4, 'h'); setCh(rows, 10, 5, 'h'); }
+        break;
+      case 'spiky': setRow(rows, 1, '..h.hh.h..'); break;
+      case 'bald':
+        if (isF) { setRow(rows, 2, '..........'); setRow(rows, 3, '..ssssss..'); setRow(rows, 4, '.hssssssh.'); }
+        if (isB) { setRow(rows, 2, '..........'); setRow(rows, 3, '..ssssss..'); setRow(rows, 4, '.ssssssss.'); setRow(rows, 5, '.hssssssh.'); }
+        if (isS) { setRow(rows, 2, '..........'); setRow(rows, 3, '..ssssss..'); setRow(rows, 4, '..hsssss..'); }
+        break;
+      case 'cap':
+        setRow(rows, 2, '...cccc...'); setRow(rows, 3, '..cccccc..'); setRow(rows, 4, isS ? '..cccccccc' : '.cccccccc.');
+        break;
+      case 'straw': setRow(rows, 1, '...yyyy...'); setRow(rows, 2, '..yyyyyy..'); setRow(rows, 3, 'yyyyyyyyyy'); break;
+      case 'headscarf':
+        if (isF) { setRow(rows, 2, '...kkkk...'); setRow(rows, 3, '..kkkkkk..'); setRow(rows, 4, '.kkkkkkkk.'); setRow(rows, 5, '.kssssssk.'); }
+        if (isB) { setRow(rows, 2, '...kkkk...'); setRow(rows, 3, '..kkkkkk..'); setRow(rows, 4, '.kkkkkkkk.'); setRow(rows, 5, '.kkkkkkkk.'); setRow(rows, 6, '.kkkkkkkk.'); setRow(rows, 7, '..kkkkkk..'); }
+        if (isS) { setRow(rows, 2, '...kkkk...'); setRow(rows, 3, '..kkkkkk..'); setRow(rows, 4, '.kkkkkkk..'); setRow(rows, 5, '.kkkssss..'); }
+        break;
+    }
+    if (L.glasses) {
+      if (isF) setRow(rows, 6, '.gegssgeg.');
+      if (isS) { setCh(rows, 6, 6, 'g'); setCh(rows, 6, 8, 'g'); setCh(rows, 6, 7, 'e'); }
+    }
+    if (L.beard) {
+      if (isF) { setRow(rows, 7, '.hssssssh.'); setRow(rows, 8, '..hhmmhh..'); }
+      if (isS) { setRow(rows, 7, '..hhhhssss'); setRow(rows, 8, '...hhhhh..'); }
+    }
+    if (L.dress) {
+      if (isF || isB) { setRow(rows, 13, '.dddddddd.'); setRow(rows, 14, '.dddddddd.'); } else { setRow(rows, 13, '..dddddd..'); setRow(rows, 14, '..dddddd..'); }
+      for (let y = 15; y <= 16; y++) rows[y] = rows[y].replace(/p/g, 'l');
+    }
+    if (L.apron && !isB) for (let y = 10; y <= 14; y++) for (let x = isS ? 6 : 3; x <= (isS ? 7 : 6); x++) if (rows[y][x] !== '.') setCh(rows, y, x, 'a');
+    return rows;
+  }
   M.person = function (L) {
     L = Object.assign({ skin: '#f1c7a0', hair: '#5a3a22', hairStyle: 'short', shirt: '#3a7bd5', pants: '#3a3f55', shoes: '#2a2a2a' }, L);
-    const g = new THREE.Group(), parts = {};
-    const legGeo = new THREE.BoxGeometry(0.22, 0.6, 0.24);
-    const mkLeg = (x) => { const lg = new THREE.Group(); const m = mesh(legGeo, mat(L.dress ? L.legs || L.skin : L.pants)); m.position.y = -0.3; lg.add(m); const sh = box(0.24, 0.12, 0.32, L.shoes); sh.position.set(0, -0.6, 0.04); lg.add(sh); lg.position.set(x, 0.66, 0); g.add(lg); return lg; };
-    parts.legL = mkLeg(-0.14); parts.legR = mkLeg(0.14);
-    const body = new THREE.Group(); body.position.y = 0.66; g.add(body); parts.body = body;
-    const torso = L.dress ? mesh(new THREE.CylinderGeometry(0.28, 0.42, 0.75, 8), mat(L.dress)) : box(0.56, 0.62, 0.36, L.shirt);
-    torso.position.y = L.dress ? 0.3 : 0.31; body.add(torso);
-    if (L.dress) { const top = box(0.5, 0.3, 0.34, L.shirt); top.position.y = 0.55; body.add(top); }
-    if (L.apron) { const ap = box(0.4, 0.55, 0.05, L.apron); ap.position.set(0, 0.32, 0.2); body.add(ap); }
-    const armGeo = new THREE.BoxGeometry(0.16, 0.5, 0.18);
-    const mkArm = (x) => { const a = new THREE.Group(); const m = mesh(armGeo, mat(L.shirt)); m.position.y = -0.22; a.add(m); const hd = box(0.16, 0.14, 0.16, L.skin); hd.position.y = -0.52; a.add(hd); a.position.set(x, 0.6, 0); body.add(a); return a; };
-    parts.armL = mkArm(-0.37); parts.armR = mkArm(0.37);
-    // big chibi head
-    const head = new THREE.Group(); head.position.y = 0.95; body.add(head); parts.head = head;
-    const skull = box(0.72, 0.66, 0.66, L.skin); skull.position.y = 0.33; head.add(skull);
-    const eye = (x) => { const e = box(0.09, 0.14, 0.04, '#2b2b3a'); e.castShadow = false; e.position.set(x, 0.32, 0.34); head.add(e); };
-    eye(-0.15); eye(0.15);
-    const blush = (x) => { const e = box(0.12, 0.06, 0.03, '#f2a0a0'); e.castShadow = false; e.position.set(x, 0.2, 0.335); head.add(e); };
-    blush(-0.24); blush(0.24);
-    if (L.glasses) { const gl = box(0.56, 0.05, 0.04, '#1e1e28'); gl.position.set(0, 0.36, 0.35); head.add(gl); }
-    if (L.beard) { const bd = box(0.6, 0.22, 0.12, L.hair); bd.position.set(0, 0.06, 0.33); head.add(bd); }
-    const hair = mat(L.hair);
-    const H = (w, h, d, x, y, z, m) => { const b = mesh(new THREE.BoxGeometry(w, h, d), m || hair); b.position.set(x, y, z); head.add(b); return b; };
-    switch (L.hairStyle) {
-      case 'bald': H(0.74, 0.18, 0.5, 0, 0.25, -0.12); break;
-      case 'cap': H(0.78, 0.22, 0.72, 0, 0.72, 0, mat(L.cap || '#d94a4a')); H(0.6, 0.06, 0.3, 0, 0.64, 0.45, mat(L.cap || '#d94a4a')); H(0.76, 0.3, 0.2, 0, 0.45, -0.28); break;
-      case 'straw': { const brim = mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.06, 10), mat('#e8c860')); brim.position.y = 0.7; head.add(brim); const crown = mesh(new THREE.CylinderGeometry(0.36, 0.4, 0.28, 10), mat('#e8c860')); crown.position.y = 0.85; head.add(crown); break; }
-      case 'headscarf': H(0.78, 0.36, 0.72, 0, 0.6, -0.02, mat(L.scarf || '#c0392b')); H(0.3, 0.3, 0.2, 0, 0.25, -0.4, mat(L.scarf || '#c0392b')); break;
-      case 'bun': H(0.76, 0.24, 0.7, 0, 0.66, -0.02); H(0.32, 0.3, 0.3, 0, 0.88, -0.2); H(0.76, 0.4, 0.15, 0, 0.42, -0.31); break;
-      case 'ponytail': H(0.76, 0.24, 0.7, 0, 0.66, -0.02); H(0.76, 0.4, 0.15, 0, 0.42, -0.31); H(0.2, 0.5, 0.2, 0, 0.3, -0.45); break;
-      case 'long': H(0.76, 0.24, 0.7, 0, 0.66, -0.02); H(0.78, 0.85, 0.18, 0, 0.25, -0.3); H(0.12, 0.6, 0.5, -0.38, 0.35, -0.05); H(0.12, 0.6, 0.5, 0.38, 0.35, -0.05); break;
-      case 'spiky': H(0.76, 0.2, 0.7, 0, 0.66, -0.02); for (let k = -1; k <= 1; k++) { const c = mesh(new THREE.ConeGeometry(0.14, 0.3, 4), hair); c.position.set(k * 0.22, 0.88, 0); head.add(c); } break;
-      default: H(0.76, 0.22, 0.7, 0, 0.66, -0.02); H(0.76, 0.35, 0.15, 0, 0.45, -0.31); H(0.76, 0.12, 0.12, 0, 0.6, 0.3);
-    }
-    g.userData.parts = parts;
-    return g;
+    const colors = {
+      h: L.hair, s: L.skin, e: '#2b2b3a', m: NB.shade(L.skin, 0.78), t: L.shirt, p: L.pants, f: L.shoes,
+      g: '#1e1e28', c: L.cap || '#d94a4a', y: '#e8c860', a: L.apron || '#ffffff', d: L.dress || L.shirt, l: L.legs || L.skin, k: L.scarf || '#c0392b',
+    };
+    const col = (ch) => colors[ch];
+    const build = (base, view, legs, post) => {
+      const rows = base.slice();
+      rows[15] = legs[0]; rows[16] = legs[1]; rows[17] = legs[2];
+      applyLook(rows, view, L);
+      if (post) post(rows);
+      return I.rows(rows, col, { shadowW: 8, shadowH: 1.8 });
+    };
+    const wave = (top) => (rows) => { // right arm raised, hand at row `top`
+      setCh(rows, 12, 8, 't'); setCh(rows, 12, 9, '.');
+      for (let y = top + 1; y <= 9; y++) setCh(rows, y, 9, 't');
+      setCh(rows, top, 9, 's');
+    };
+    const side = LEGS.side.map((l) => build(SIDE, 'side', l));
+    return {
+      down: LEGS.front.map((l) => build(FRONT, 'front', l)),
+      up: LEGS.front.map((l) => build(BACK, 'back', l)),
+      right: side,
+      left: side.map(flipRec),
+      wave: [build(FRONT, 'front', LEGS.front[0], wave(6)), build(FRONT, 'front', LEGS.front[0], wave(5))],
+    };
   };
 
-  // ---------- cats ----------
-  // pattern: tabby | tuxedo | socks | calico | luna (white calico with black/orange patches, banded tail)
+  // ---------- cats (drawn facing right) ----------
+  const CAT = {
+    walk1: ['........c.c.', 'c.......ccc.', 'c.......cecn', '.c.ccccccccc', '..cccccccc..', '..cccccccc..', '..c.c..c.c..', '..w.w..w.w..'],
+    walk2: ['........c.c.', '.c......ccc.', 'c.......cecn', 'c..ccccccccc', '..cccccccc..', '..cccccccc..', '...cc...cc..', '...ww...ww..'],
+    sit: ['........c.c.', '........ccc.', '........cecn', '.......cccc.', '......ccccc.', '.....cccccc.', '....ccccccc.', 'cc..ccccccc.', '.ccccccwwcc.'],
+    sleep: ['............', '............', '............', '............', '.........c.c', '...ccccccccc', '..cccccccczc', '.ccccccccccc', '..ccccccccc.'],
+  };
   M.cat = function (L) {
     L = Object.assign({ fur: '#e08a3c', dark: '#a85a22', pattern: 'tabby' }, L);
-    const g = new THREE.Group(), parts = {};
     const luna = L.pattern === 'luna';
     const WHT = '#f8f4ec', BLK = '#2e2a2c', ORG = '#e0883a';
-    const base = luna ? WHT : L.pattern === 'calico' ? WHT : L.fur;
-    const body = new THREE.Group(); body.position.y = 0.3; g.add(body); parts.body = body;
-    const torso = box(0.32, 0.26, 0.62, base); body.add(torso);
-    const belly = box(0.26, 0.06, 0.5, L.pattern === 'tuxedo' || L.pattern === 'socks' || luna ? WHT : base); belly.position.y = -0.11; body.add(belly);
-    // patches / stripes on the back
-    const patch = (w, d, x, z, c) => { const p = box(w, 0.04, d, c); p.castShadow = false; p.position.set(x, 0.14, z); body.add(p); };
-    if (luna) { patch(0.26, 0.2, -0.02, -0.14, BLK); patch(0.24, 0.18, 0.03, 0.08, ORG); patch(0.12, 0.1, 0.1, -0.24, ORG); }
-    else if (L.pattern === 'calico') { patch(0.2, 0.2, 0, -0.1, BLK); patch(0.22, 0.2, 0.02, 0.15, ORG); }
-    else if (L.pattern === 'tabby') for (let k = -2; k <= 2; k++) patch(0.33, 0.05, 0, k * 0.11, L.dark);
-    // legs
-    const legCol = L.pattern === 'tuxedo' || L.pattern === 'socks' || luna || L.pattern === 'calico' ? WHT : base;
-    parts.legs = [[-0.1, 0.2], [0.1, 0.2], [-0.1, -0.2], [0.1, -0.2]].map(([x, z]) => { const lg = box(0.08, 0.2, 0.08, legCol); lg.position.set(x, 0.1, z); g.add(lg); return lg; });
-    // head
-    const head = new THREE.Group(); head.position.set(0, 0.2, 0.36); body.add(head); parts.head = head;
-    const sk = box(0.3, 0.26, 0.26, luna || L.pattern === 'calico' ? WHT : base); head.add(sk);
-    if (luna) {
-      // black patch over one eye, orange over the other, white blaze + muzzle (like the photo)
-      const hp = (w, h, x, y, c) => { const p = box(w, h, 0.03, c); p.castShadow = false; p.position.set(x, y, 0.135); head.add(p); };
-      hp(0.12, 0.14, -0.08, 0.04, BLK); hp(0.11, 0.13, 0.09, 0.05, ORG);
-      const cap1 = box(0.15, 0.04, 0.24, BLK); cap1.position.set(-0.075, 0.14, -0.01); head.add(cap1);
-      const cap2 = box(0.15, 0.04, 0.24, ORG); cap2.position.set(0.075, 0.14, -0.01); head.add(cap2);
-    }
-    const earCol = (x) => (luna ? (x < 0 ? BLK : ORG) : L.pattern === 'tuxedo' ? '#2b2b2b' : base);
-    [-0.09, 0.09].forEach((x) => { const e = mesh(new THREE.ConeGeometry(0.06, 0.13, 4), mat(earCol(x))); e.position.set(x, 0.18, -0.02); head.add(e); });
-    const eyeCol = luna ? '#c9cf3a' : '#c8e04a';
-    [-0.07, 0.07].forEach((x) => { const e = box(0.06, 0.06, 0.03, eyeCol); e.castShadow = false; e.position.set(x, 0.03, 0.14); head.add(e); const p = box(0.025, 0.05, 0.035, '#1a1a1a'); p.position.set(x, 0.03, 0.145); head.add(p); });
-    const nose = box(0.05, 0.035, 0.03, '#f2a0b0'); nose.position.set(0, -0.04, 0.145); head.add(nose);
-    // tail (segments, banded for Luna)
-    const tail = new THREE.Group(); tail.position.set(0, 0.08, -0.3); body.add(tail); parts.tail = tail;
-    for (let k = 0; k < 4; k++) {
-      const c = luna ? (k % 2 ? BLK : ORG) : L.pattern === 'tabby' && k % 2 ? L.dark : L.pattern === 'calico' ? (k % 2 ? BLK : ORG) : base;
-      const s = box(0.07, 0.07, 0.12, c); s.position.set(0, k * 0.07, -k * 0.09); tail.add(s);
-    }
-    g.userData.parts = parts;
-    g.scale.setScalar(1.7); // a bit bigger than life so they're easy to find and click
-    return g;
+    const colorOf = (ch, x, y) => {
+      if (ch === 'e') return luna ? '#c9cf3a' : '#c8e04a';
+      if (ch === 'n') return '#f0a0b0';
+      if (ch === 'z') return NB.shade(luna ? WHT : L.fur, 0.6);
+      if (ch === 'w') return L.pattern === 'tuxedo' || L.pattern === 'socks' || luna || L.pattern === 'calico' ? '#ffffff' : L.fur;
+      if (luna) {
+        if (x >= 8 && y <= 2) return x <= 9 ? BLK : ORG; // head: black patch left, orange right
+        if (x <= 1) return y % 2 ? BLK : ORG; // banded tail
+        if (y <= 4 && x >= 3 && x <= 4) return BLK; // back patches
+        if (y <= 4 && x >= 6 && x <= 7) return ORG;
+        return WHT;
+      }
+      if (L.pattern === 'tabby' && y >= 3 && y <= 6 && x % 3 === 0) return L.dark;
+      if (L.pattern === 'tabby' && y === 1 && x === 9) return L.dark;
+      if (L.pattern === 'tuxedo' && ((y >= 3 && x >= 8) || (y >= 7 && x >= 6))) return '#ffffff';
+      if (L.pattern === 'calico') { const v = (x * 7 + y * 13) % 11; return v < 3 ? '#e08a3c' : v < 5 ? '#2b2b2b' : '#f6f1e8'; }
+      return L.fur;
+    };
+    const make = (rows) => { const right = I.rows(rows, colorOf, { shadowW: 10, shadowH: 1.6 }); return { right, left: flipRec(right) }; };
+    return { walk: [make(CAT.walk1), make(CAT.walk2)], sit: make(CAT.sit), sleep: make(CAT.sleep) };
   };
 
-  // ---------- vehicles ----------
-  const wheel = (x, z) => { const w = mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.3, 10), mat('#2a2a2e')); w.rotation.z = Math.PI / 2; w.position.set(x, 0.38, z); return w; };
-  M.bus = function () {
-    const g = new THREE.Group();
-    const b = box(2.5, 2.6, 10, '#ffcc00'); b.position.y = 1.7; g.add(b);
-    const stripe = box(2.52, 0.25, 10.02, '#d9302a'); stripe.position.y = 0.75; g.add(stripe);
-    const win = box(2.54, 0.9, 8.6, '#2b3d55'); win.position.set(0, 2.25, -0.4); g.add(win);
-    const ws = box(2.3, 1.2, 0.08, '#2b3d55'); ws.position.set(0, 2.1, 5.01); g.add(ws);
-    const roof = box(2.3, 0.2, 9.6, '#f2f2ea'); roof.position.y = 3.05; g.add(roof);
-    [[-1.2, 3.3], [1.2, 3.3], [-1.2, -3.3], [1.2, -3.3]].forEach(([x, z]) => g.add(wheel(x, z)));
-    [-0.8, 0.8].forEach((x) => { const l = box(0.4, 0.2, 0.05, '#fff8c0'); l.position.set(x, 0.9, 5.02); g.add(l); });
-    return g;
-  };
-  M.car = function (color) {
-    const g = new THREE.Group();
-    const b = box(1.8, 0.8, 4, color); b.position.y = 0.75; g.add(b);
-    const cab = box(1.6, 0.7, 2.1, color); cab.position.set(0, 1.5, -0.2); g.add(cab);
-    const gl = box(1.62, 0.5, 2.0, '#2b3d55'); gl.position.set(0, 1.5, -0.2); g.add(gl);
-    [[-0.9, 1.3], [0.9, 1.3], [-0.9, -1.3], [0.9, -1.3]].forEach(([x, z]) => g.add(wheel(x, z)));
-    [-0.55, 0.55].forEach((x) => { const l = box(0.35, 0.15, 0.05, '#fff8c0'); l.position.set(x, 0.85, 2.01); g.add(l); });
-    return g;
+  // ---------- small ground glow for lamps (additive, banded like pixel art) ----------
+  M.glow = function () {
+    if (!treeCache.glow) {
+      const W = 64, H = 32, pix = new I.Pix(W, H);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const dx = (x + 0.5 - W / 2) / (W / 2), dy = (y + 0.5 - H / 2) / (H / 2), d = Math.sqrt(dx * dx + dy * dy);
+        if (d >= 1) continue;
+        const band = d < 0.35 ? 150 : d < 0.65 ? 95 : 45;
+        pix.put(x, y, 255, 205, 120, band);
+      }
+      treeCache.glow = I.finish(pix, W / 2, H / 2);
+    }
+    return treeCache.glow;
   };
 })(window.NB);

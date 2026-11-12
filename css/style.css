@@ -22,7 +22,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #bfe6ff; color: var(--paper); font-family: 'Nunito', 'Segoe UI', sans-serif; }
 canvas { position: fixed; inset: 0; display: block; }
-canvas#gl { touch-action: none; cursor: grab; }
+canvas#gl { touch-action: none; cursor: grab; image-rendering: pixelated; image-rendering: crisp-edges; }
 canvas#gl:active { cursor: grabbing; }
 canvas#ui { pointer-events: none; }
 
