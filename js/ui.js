@@ -19,7 +19,7 @@
     if (o.quiet && U.bubbles.length > 6) return;
     U.bubbles.push({ owner, text, t: 0, life: o.life || NB.clamp(1.8 + text.length * 0.07, 2.5, 6) });
   };
-  // kind: heart | note | dust | ripple | fish | angry | steam | smoke | fire
+  // kind: heart | note | dust | ripple | fish | angry | steam | smoke | fire | water
   U.fx = function (x, y, z, kind, o) {
     o = o || {};
     U.fxs.push({ x, y, z, kind, vy: o.vy || 0.8, life: o.life || 1.2, t: 0, wob: Math.random() * 6, size: o.size || 1 });
@@ -82,6 +82,7 @@
         ctx.globalAlpha = a; ctx.fillStyle = '#ff6a1a'; ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#ffd040'; ctx.beginPath(); ctx.arc(p[0], p[1] + r * 0.2, r * 0.5, 0, Math.PI * 2); ctx.fill();
       }
+      else if (f.kind === 'water') { ctx.fillStyle = '#8fd0ff'; ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(1.2, NB.view.zoom * 0.7), 0, Math.PI * 2); ctx.fill(); }
       else if (f.kind === 'ripple') { // expanding ring on the water
         const rx = (2 + f.t * 9) * NB.view.zoom; ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.ellipse(p[0], p[1], rx, rx / 2, 0, 0, Math.PI * 2); ctx.stroke();
@@ -101,6 +102,21 @@
       ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.beginPath(); ctx.moveTo(tip[0], tip[1]); ctx.lineTo(fl[0], fl[1]); ctx.stroke();
       ctx.fillStyle = '#e8463a'; ctx.beginPath(); ctx.arc(fl[0], fl[1], Math.max(2, v.zoom), 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(fl[0], fl[1] - Math.max(1, v.zoom * 0.6), Math.max(1, v.zoom * 0.6), 0, Math.PI * 2); ctx.fill();
+    }
+    // boule: balls lying on the court, the cochonnet ("Säuli"), a ball in the air
+    const bg = NB.map.bouleGame;
+    if (bg) {
+      const br = Math.max(1.6, v.zoom * 1.0);
+      const ball = (x, y, z, col, r) => {
+        const p = toScreen(x, y, z); if (!p) return;
+        ctx.fillStyle = col; ctx.strokeStyle = 'rgba(30,25,40,0.85)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(p[0], p[1] - r, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillRect(Math.round(p[0] - r * 0.5), Math.round(p[1] - r * 1.6), Math.max(1, Math.round(r * 0.5)), Math.max(1, Math.round(r * 0.5)));
+      };
+      if (bg.coch) ball(bg.coch.x, 0, bg.coch.z, '#f0a030', br * 0.6);
+      for (const b of bg.balls) ball(b.x, 0, b.z, b.col, br);
+      const fl = bg.fly;
+      if (fl) { const t = Math.min(1, fl.t); ball(fl.x0 + (fl.x1 - fl.x0) * t, 1.1 * (1 - t) + fl.h * Math.sin(Math.PI * t), fl.z0 + (fl.z1 - fl.z0) * t, fl.coch ? '#f0a030' : fl.col, fl.coch ? br * 0.6 : br); }
     }
     // firefighters' water jets: arc from the nozzle to the target, a few droplets
     for (const e of NB.Entities.list) {

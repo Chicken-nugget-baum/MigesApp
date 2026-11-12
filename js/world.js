@@ -189,6 +189,50 @@
     }
     if (best) map.parkings.dairy = { x: best.x, z: best.z, heading: best.heading };
   }
+  // Ifangweg 23 (André + Monika Koch): boule court in front of the door, a bench beside it, Monika's hydrangeas
+  // (from the Gärtnerei Gisler) by the door and at the end of the court, a parking spot for André's jeep
+  const koch = Object.values(map.buildings).find((b) => b.addr === 'Ifangweg 23');
+  if (koch) {
+    const D = koch.door, n = koch.doorN, t = [-n[1], n[0]];
+    const at = (a, m) => ({ x: D[0] + t[0] * a + n[0] * m, z: D[1] + t[1] * a + n[1] * m });
+    const L = 12, WD = 3, A0 = 1, M0 = 6.2; // court: length along the facade, width, centre (a, m) in front of the door
+    const onCourt = (p, pad) => { const a = (p.x - D[0]) * t[0] + (p.z - D[1]) * t[1] - A0, m = (p.x - D[0]) * n[0] + (p.z - D[1]) * n[1] - M0; return Math.abs(a) < L / 2 + pad && Math.abs(m) < WD / 2 + pad; };
+    const free = (p, r) => !map.inBuilding(p.x, p.z, r) && map.streetDist(p.x, p.z) > 1.5 && !onCourt(p, r);
+    const C = at(A0, M0), throwPt = at(A0 - L / 2 + 1, M0);
+    // bench on the far side of the court, looking at it
+    const bench = Object.assign(at(A0 - 1, M0 + WD / 2 + 1.3), { heading: Math.atan2(-n[0], -n[1]) });
+    // hydrangeas: two beds either side of the door, three bushes beyond the far end of the court
+    const bushes = [];
+    for (const a of [-3.2, -1.9, 1.9, 3.2]) { const p = at(a, 0.8); if (free(p, 0.2)) bushes.push(Object.assign(p, { stand: at(a, 2.1), face: Math.atan2(-n[0], -n[1]) })); }
+    for (const m of [M0 - 1.3, M0, M0 + 1.3]) { const p = at(A0 + L / 2 + 1.2, m); if (free(p, 0.2)) bushes.push(Object.assign(p, { stand: at(A0 + L / 2 + 2.3, m), face: Math.atan2(-t[0], -t[1]) })); }
+    // the jeep: beyond the far end of the court (towards the viewer, so no house hides it), else beside it
+    let parking = null;
+    for (const [a, m] of [[A0 + L / 2 + 4.8, M0 + 0.5], [A0 + L / 2 + 4.8, M0 + 3], [A0 + L / 2 + 4.8, M0 - 2], [A0, M0 + WD / 2 + 4.5], [A0 - L / 2 - 3.5, M0 + 1], [A0 - L / 2 - 3.5, M0 + 4]]) {
+      const p = at(a, m);
+      if (free(p, 1.8) && !map.fieldAt(p.x, p.z) && !bushes.some((b) => Math.hypot(b.x - p.x, b.z - p.z) < 2.6)) { parking = { x: p.x, z: p.z, heading: Math.atan2(n[0], n[1]) }; break; }
+    }
+    map.kochProps = { court: { x: C.x, z: C.z, len: L, wid: WD, alongX: Math.abs(t[0]) > Math.abs(t[1]) }, corners: [at(A0 - L / 2, M0 - WD / 2), at(A0 + L / 2, M0 - WD / 2), at(A0 + L / 2, M0 + WD / 2), at(A0 - L / 2, M0 + WD / 2)],
+      throwPt, throwFace: Math.atan2(t[0], t[1]), dir: t, bench, bushes, parking };
+    map.parkings = map.parkings || {};
+    if (parking) map.parkings.koch = parking;
+    map.spots = map.spots || {};
+    map.spots.boule = [{ x: throwPt.x, z: throwPt.z, face: Math.atan2(t[0], t[1]), sit: false }];
+    const bh = bench.heading, px = Math.cos(bh), pz = -Math.sin(bh);
+    map.spots.boulebank = [-0.5, 0.5].map((k) => ({ x: bench.x + px * k, z: bench.z + pz * k, face: bh, sit: true, bench: true }));
+    map.spots.hortensien = bushes.map((b) => ({ x: b.stand.x, z: b.stand.z, face: b.face, sit: false, bush: b }));
+    const box = (p, r) => [p.x - r, p.z - r, p.x + r, p.z + r];
+    map.pois.boule = box(throwPt, 0.8);
+    map.pois.boulebank = box(bench, 1.2);
+    map.pois.hortensien = box(at(0, 2.1), 2.5);
+    // bushes and the bench are not walkable
+    for (const p of bushes.concat([bench])) {
+      const [c0x, c0z] = map.toCell(p.x - 1, p.z - 1), [c1x, c1z] = map.toCell(p.x + 1, p.z + 1);
+      for (let cz = Math.max(0, c0z); cz <= Math.min(H - 1, c1z); cz++) for (let cx = Math.max(0, c0x); cx <= Math.min(W - 1, c1x); cx++) {
+        const c = map.cellCentre(cx, cz);
+        if (Math.hypot(c.x - p.x, c.z - p.z) < (p === bench ? 0.6 : 0.5)) { map.walkCost[cz * W + cx] = 0; map.animalCost[cz * W + cx] = 0; }
+      }
+    }
+  }
   // POIs from older data that don't exist in this small scene
   const ALIAS = { casino: 'beiz', niederwil: 'niederwilerstrasse', reuss: 'kapellenweg', wald: 'kapellenweg', gnadenthal: 'kapellenweg', gartebahn: 'ifangweg', feld: 'kapellenweg', weide: 'kapellenweg', schuel: 'niederwilerstrasse' };
   for (const [k, v] of Object.entries(ALIAS)) if (!map.pois[k]) map.pois[k] = map.pois[v];

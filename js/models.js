@@ -290,6 +290,52 @@
     }
     return treeCache.sitzplatz;
   };
+  // boule court: wooden frame only (the gravel is painted into the ground). w along u, d along v
+  M.bouleFrame = function (w, d) {
+    const key = 'boule' + w + 'x' + d;
+    if (!treeCache[key]) {
+      const m = I.model(), b = 0.14, h = 0.16, col = '#8a5a32';
+      m.box(-w / 2 - b, -d / 2 - b, 0, w + b * 2, b, h, col); // far long / short sides first
+      m.box(-w / 2 - b, -d / 2, 0, b, d, h, col);
+      m.box(w / 2, -d / 2, 0, b, d, h, col);
+      m.box(-w / 2 - b, d / 2, 0, w + b * 2, b, h, col);
+      // a throwing circle at the -v / -u end
+      const along = d >= w, cu = along ? 0 : -w / 2 + 1, cv = along ? -d / 2 + 1 : 0;
+      m.box(cu - 0.25, cv - 0.25, 0, 0.5, 0.04, 0.03, '#f4f1ea', { noOutline: true });
+      m.box(cu - 0.25, cv + 0.21, 0, 0.5, 0.04, 0.03, '#f4f1ea', { noOutline: true });
+      m.box(cu - 0.25, cv - 0.25, 0, 0.04, 0.5, 0.03, '#f4f1ea', { noOutline: true });
+      m.box(cu + 0.21, cv - 0.25, 0, 0.04, 0.5, 0.03, '#f4f1ea', { noOutline: true });
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  // hydrangea (Hortensie): round leafy bush with big flower balls. Buds in spring, full colour in summer,
+  // faded "antique" heads in autumn, dry brown heads in winter.
+  const HYD = [['#7f9fe8', '#aac0f6', '#5f7fd0'], ['#ef8fbf', '#f8bbd8', '#d06a9e'], ['#a68ae0', '#c8b4f2', '#8466c4'], ['#f2f2f6', '#ffffff', '#d4d4e0']];
+  M.hortensie = function (variant) {
+    const key = 'hyd' + variant;
+    if (!treeCache[key]) {
+      const r = NB.seeded(variant * 29 + 11), W = 13, H = 11;
+      const winter = SEASON === 'winter', spring = SEASON === 'spring', autumn = SEASON === 'autumn';
+      const fc = HYD[variant % HYD.length].map((c) => (autumn ? NB.shade(c, 0.82) : c));
+      const leaf = winter ? ['#8a7058', '#6f5845', '#9c8168'] : ['#4f8f4a', '#3c7638', '#66a85c'];
+      const heads = [[3.5, 3.5, 2.6], [9, 3.2, 2.6], [6.3, 2, 2.5], [6.5, 5, 2.2]];
+      treeCache[key] = art(W, H, (px) => {
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const body = (x - 6.3) ** 2 / 36 + (y - 6.5) ** 2 / 20 <= 1;
+          const head = !spring && heads.find(([hx, hy, hr]) => (x - hx) ** 2 + (y - hy) ** 2 <= hr * hr);
+          if (head) {
+            if (winter) px(x, y, y < 2 ? '#ffffff' : r() < 0.5 ? '#b49a7c' : '#9c8064');
+            else px(x, y, r() < 0.25 ? fc[1] : r() < 0.15 ? fc[2] : fc[0]);
+          } else if (body && !(winter && r() < 0.45)) {
+            px(x, y, y < 5 ? leaf[2] : y > 8 ? leaf[1] : leaf[0]);
+            if (spring && y < 6 && r() < 0.12) px(x, y, '#b8e08a'); // buds
+          }
+        }
+      }, { shadowH: 1.6 });
+    }
+    return treeCache[key];
+  };
   M.table = function () {
     if (!treeCache.table) {
       const m = I.model();
@@ -363,6 +409,22 @@
       [-0.9, 0.9].forEach((x) => m.cbox(x, 0.85, 0.95, 0.12, 0.22, 0.14, '#e8d53a', { noOutline: true }));
       [-0.5, 0.5].forEach((x) => m.cbox(x, 1.88, 0.62, 0.3, 0.06, 0.26, '#fff8c0', { noOutline: true, light: '#fff2a0' }));
       [-0.55, 0.55].forEach((x) => m.cbox(x, -1.88, 0.6, 0.26, 0.06, 0.2, '#e03a3a', { noOutline: true }));
+    } else if (type === 'jeep') {
+      // old army jeep: olive tub, flat bonnet, fold-down windscreen, open top with roll bar, spare wheel at the back
+      m.shadow(-0.8, -1.75, 1.6, 3.5, 1.3);
+      [[-0.74, 1.05], [0.74, 1.05], [-0.74, -1.05], [0.74, -1.05]].forEach(([x, z]) => wheel(x, z, 0.36));
+      m.cbox(0, 0, 0.34, 1.5, 3.3, 0.56, color);
+      m.cbox(0, -0.55, 0.9, 1.3, 1.4, 0.04, '#3a3f2a', { noOutline: true }); // open tub floor seen from above
+      [-0.35, 0.35].forEach((x) => m.cbox(x, -0.35, 0.9, 0.5, 0.16, 0.42, '#4a4632'));
+      m.cbox(0, 0.48, 0.9, 1.44, 0.07, 0.5, '#a9c4dc', { noOutline: true }); // windscreen
+      m.cbox(0, 0.48, 1.38, 1.5, 0.09, 0.08, color);
+      [-0.68, 0.68].forEach((x) => { m.cbox(x, -1.2, 0.9, 0.08, 0.08, 0.72, '#3a3f2a'); m.cbox(x, 0.48, 0.9, 0.08, 0.09, 0.5, color); });
+      m.cbox(0, -1.2, 1.58, 1.44, 0.08, 0.08, '#3a3f2a');
+      m.cbox(0, 1.66, 0.45, 0.8, 0.05, 0.4, '#3a3f2a', { noOutline: true }); // grille
+      [-0.55, 0.55].forEach((x) => m.cbox(x, 1.67, 0.68, 0.22, 0.05, 0.2, '#fff8c0', { noOutline: true, light: '#fff2a0' }));
+      m.cbox(0.3, -1.74, 0.42, 0.62, 0.2, 0.62, '#2a2a2e'); // spare wheel
+      m.cbox(-0.45, -1.7, 0.5, 0.3, 0.14, 0.4, NB.shade(color, 0.8)); // jerrycan
+      m.cbox(0, 1.1, 0.91, 0.5, 0.5, 0.02, '#f4f1ea', { noOutline: true }); // white marking on the bonnet
     } else if (type === 'tractor') {
       // farm tractor: big rear wheels with yellow hubs, long bonnet, glass cab, exhaust stack
       m.shadow(-0.95, -1.7, 1.9, 3.8, 1.7);

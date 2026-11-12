@@ -19,6 +19,23 @@ NB.Data.visitors = [
   { members: [], park: 'dairy', car: { type: 'tanker', color: '#2f6fb5', name: 'Milchtransporter', lines: ["Frischi Milch für d'Chäserei!", 'Jede Morge und jede Abig: Milch abhole.', "12'000 Liter passe do dri."] }, arrive: ['18:20', '19:00'], stay: [3, 5] },
 ];
 // The Niederwil fire brigade (comes when the Milchzentrale burns). Raphy Naef is one of the crew.
+// Residents' car trips: the car is parked at home (map.parkings[parking]); on the days a trip happens (chance) the
+// members walk to it at a time drawn from `go`, drive off and come back after `away` minutes. cruise: the car
+// rumbles through the village once while they're out.
+NB.Data.outings = [
+  {
+    parking: 'koch', street: 'Ifangweg',
+    car: { type: 'jeep', color: '#5b6b3a', name: 'Militärjeep vom André', lines: ['Alte Armee-Jeep, Jahrgang 1963. Lauft wie es Ührli.', 'Brumm-brumm-tuck-tuck. 🚙', 'Kei Dach, kei Problem.', 'Ehemals Schwiizer Armee. Hüt: Ifangweg 23.'] },
+    trips: [
+      { members: ['andre', 'monika'], go: ['08:40', '10:00'], away: [40, 75], chance: 0.6,
+        leave: { monika: 'André, mir fahred zum Gisler! 🌸', andre: 'Scho wider zum Gisler? Jo guet…' },
+        back: { monika: 'Lueg, nomol zwei Hortensie vom Gisler! 🌸', andre: 'Mir händ jetzt meh Hortensie als Rase.' } },
+      { members: ['andre'], go: ['13:40', '16:00'], away: [25, 55], chance: 0.85, cruise: true,
+        leave: { andre: 'Ich mach no e Rundi mit em Jeep. 🚙' },
+        back: { andre: 'So. Rundi gmacht – de Jeep lauft wie es Ührli.' } },
+    ],
+  },
+];
 NB.Data.firebrigade = { name: 'Füürwehr Niederwil', lines: ['Tatü-tata! Platz do!', 'Füürwehr Niederwil – scho wider Nesselnbach?', 'Wasser hämmer gnueg debii.'] };
 NB.Data.firefighters = [
   { name: 'Raphy Naef', voice: 0.85, look: { skin: '#5a3a28', hair: '#1a1210', hairStyle: 'cap', cap: '#e8c23a', shirt: '#c0392b', pants: '#2a2a3a', bands: ['#f2e85a', '#c0392b'], shoes: '#1a1a1a' },
@@ -163,6 +180,33 @@ NB.Data.characters = [
     clicks: ['Hey Brüederli!', 'Joel, zocke mer hüt no?', 'Mariana, hesch du de Joel gseh?', 'Lass mi in Rueh, Mann!'],
     random: ['Wär chunnt go Pingpong spile?', 'De Mini vom Joel isch scho geil. Ich ha s\'Postauto.', 'Mami, was gits z\'Ässe?', 'Mige, hesch Kafi?'],
     night: ['No ei Rundi, denn gang i uf s\'Postauto.'],
+  },
+  // André Koch (Ifangweg 23): plays boule on the court in front of his house, drives an old army jeep.
+  {
+    id: 'andre', name: 'André Koch', home: 'h84', cycle: true,
+    look: { skin: '#e8b890', hair: '#a8a8a8', hairStyle: 'cap', cap: '#5b6b3a', beard: true, shirt: '#6b7a4a', pants: '#3a4a6a', shoes: '#3a2e24' },
+    voice: 0.75, favorites: ['boule', 'beiz', 'dorfplatz'],
+    routine: [{ at: '07:00', go: 'home:h84' }, { at: '10:30', go: 'boule', do: 'boule' }, { at: '12:00', go: 'home:h84' }, { at: '16:30', go: 'boule', do: 'boule' }, { at: '18:00', go: 'beiz' }, { at: '19:15', go: 'home:h84' }],
+    sleep: ['22:30', '06:30'],
+    clicks: ['Hesch Bock uf e Partie Boule? 🎯', 'De Jeep? Alti Armee, Jahrgang 1963. Lauft wie es Ührli.', "Pointe oder tire – das isch do d'Frog.", "D'Monika und ihri Hortensie… mir händ jetzt meh Blueme als Rase."],
+    random: ['Wo isch mis Säuli?', "Hüt lauft d'Chugle guet.", 'Am Samschtig gits es Turnier.', 'De Jeep bruucht nur echli Liebi und Öl.'],
+    night: ['Morn spielemer wider.'],
+    bouleLines: ['Pointe oder tire?', 'Konzentration…', 'Silber gäge Bronze – ich gäge mich.', "Wo isch s'Säuli?"],
+    bouleGood: ['Dä ligt! 🎯', 'Perfekt ane gleit!', 'Wie im Militär: präzis.', 'Ha! Do wott ich dich gseh!'],
+    bouleBad: ['Ohje… z wiit.', 'De Bode isch schief!', 'Hmpf. Das zellt nöd.', 'Kurz gseit: nei.'],
+  },
+  // Monika Koch (Ifangweg 23): tends her hydrangeas, loves the Gärtnerei Gisler in Niederwil.
+  {
+    id: 'monika', name: 'Monika Koch', home: 'h84', cycle: true,
+    look: { skin: '#f1c7a0', hair: '#d9b26a', hairStyle: 'bun', shirt: '#f2a7c3', pants: '#5a6a8a', shoes: '#f4f1ea', apron: '#6aa35a', flower: '#7f9fe8' },
+    voice: 1.15, favorites: ['hortensien', 'boulebank', 'kapelle'],
+    routine: [{ at: '07:30', go: 'hortensien', do: 'garden' }, { at: '08:30', go: 'home:h84' }, { at: '11:00', go: 'hortensien', do: 'garden' }, { at: '12:00', go: 'home:h84' }, { at: '16:30', go: 'boulebank' }, { at: '18:00', go: 'hortensien', do: 'garden' }, { at: '19:00', go: 'home:h84' }],
+    sleep: ['22:00', '06:30'],
+    clicks: ['Lueg emol mini Hortensie! Alli vo de Gärtnerei Gisler. 🌸', 'Bim Gisler chönnt ich de ganz Tag sii.', 'André, nöd mit de Chugle i mini Hortensie!', 'Blau oder rosa? Das macht de Bode – seit de Gisler.'],
+    random: ['Morn gang ich wider zum Gisler.', 'De Gisler hed die schönschte Hortensie wiit und breit.', 'Hesch scho mini Hortensie gseh?', 'Echli Kafi, echli Garte – perfekt.'],
+    night: ['Guet Nacht, ihr Hortensie.'],
+    gardenLines: ['Echli Wasser für eu… 💧', 'So schön blüehed er hüür!', 'Die hed mer de Gisler empfohle.', 'Nur nöd z viel Sunne, gäll.', 'Ihr sind mini Schätzli. 🌸'],
+    gardenWinter: ['Schlofed guet, ihr Hortensie.', 'Im Früehlig gits neui vom Gisler.', "Nöd abschniide – sie bruuched d'Blüete als Schutz."],
   },
   // ---------------- villagers ----------------
   {

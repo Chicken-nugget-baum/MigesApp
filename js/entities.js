@@ -100,18 +100,18 @@
       else { const s = claimSpot(this, g.place); if (s) { this.x = s.x; this.z = s.z; if (s.sit) { this.seated = true; this.heading = s.face; } } }
     }
     // ---- visitors: arrive with the car, walk back to it when it is time to go ----
-    arrive(p, instant, idx) {
+    arrive(p, instant, idx, line0) {
       this.away = false; this.toCar = null; this.inside = false; this.fishing = null; this.fled = null;
       if (instant) { this.appear(); return; }
       this.x = p.x + NB.rr(-1, 1) + (idx || 0) * 1.5; this.z = p.z + NB.rr(-1, 1) + 1.2; this.goalKey = null; this.path = null;
       this.pause = 1.5 + (idx || 0) * 0.7; this.heading = I.towardCamera;
-      const line = NB.pick(this.c.arriveLines || ['Hoi zäme!']);
+      const line = line0 || NB.pick(this.c.arriveLines || ['Hoi zäme!']);
       say(this, line); if (NB.UI.onScreen(this)) NB.Audio.babble(line, this.c.voice, { pos: this });
       NB.Audio.play(this.waitForBus ? 'door' : 'cardoor', { pos: this, vol: 0.6 });
     }
-    goToCar(p, waitForBus) {
+    goToCar(p, waitForBus, line0) {
       this.toCar = p; this.waitForBus = !!waitForBus; this.goalKey = null; this.path = null; this.fishing = null;
-      const line = NB.pick(this.c.leaveLines || ['Tschüss zäme!']);
+      const line = line0 || NB.pick(this.c.leaveLines || ['Tschüss zäme!']);
       say(this, line); if (NB.UI.onScreen(this)) NB.Audio.babble(line, this.c.voice, { pos: this });
     }
     enterCar() {
@@ -149,10 +149,19 @@
         nx = hz * side; nz = -hx * side; l = 1;
       }
       nx /= l; nz /= l;
-      let tx = this.x, tz = this.z;
-      for (let k = 0; k < 16 && g(tx, tz) < 1.6; k++) { tx += nx * 0.5; tz += nz * 0.5; }
-      const [cx, cz] = map.toCell(tx, tz);
-      if (!map.inB(cx, cz) || !map.walkCost[cz * map.w + cx]) return;
+      const ok = (x, z) => { const [cx, cz] = map.toCell(x, z); return map.inB(cx, cz) && map.walkCost[cz * map.w + cx] > 0 && g(x, z) >= 1.6; };
+      let spot = null;
+      for (const sg of [1, -1]) {
+        let tx = this.x, tz = this.z;
+        for (let k = 0; k < 24 && g(tx, tz) < 1.6; k++) { tx += nx * sg * 0.5; tz += nz * sg * 0.5; }
+        if (ok(tx, tz)) { spot = [tx, tz]; break; }
+      }
+      for (let r = 2; !spot && r <= 10; r++) for (let k = 0; k < 16 && !spot; k++) {
+        const a = (k / 16) * Math.PI * 2, x = this.x + Math.cos(a) * r, z = this.z + Math.sin(a) * r;
+        if (ok(x, z)) spot = [x, z];
+      }
+      if (!spot) return;
+      const [tx, tz] = spot;
       this.evading = { v, x: tx, z: tz, t: 0 };
       this.pause = 0; this.moving = true;
       if (Math.random() < 0.45) say(this, v.type === 'bus' ? NB.pick(["S'Postauto!", 'Ui, de Bus!']) : v.type === 'tractor' ? NB.pick(['De Buur mit em Traktor!', 'Tuck-tuck-tuck!', 'Hoi Buur!']) : NB.pick(['Achtung, es Auto!', "Hopp, uf d'Siite!", 'Ui!', 'Langsam!']), { quiet: true });
@@ -184,7 +193,8 @@
       const g = this.currentGoal();
       const building = this.homeOf(g.place);
       if (g.place !== this.goalKey) {
-        this.goalKey = g.place; this.target = building; this.path = null; this.act = g.act || null; this.fishing = null;
+        this.goalKey = g.place; this.target = building; this.path = null; this.act = g.act || null; this.fishing = null; this.gardenT = null; this.waterT = 0;
+        if (map.bouleGame && map.bouleGame.by === this) map.bouleGame.fly = null;
         releaseSpot(this);
         if (this.inside && this.inBuilding !== building) this.leave();
         if (!this.inside) {
@@ -203,6 +213,10 @@
         } else if (this.act === 'fish' && map.fishing) {
           if (!this.fishing) this.startFishing();
           this.updateFishing(dt);
+        } else if (this.act === 'boule' && map.kochProps) {
+          this.updateBoule(dt);
+        } else if (this.act === 'garden' && map.kochProps) {
+          this.updateGarden(dt);
         } else {
           if (this.spot && this.spot.sit && !this.seated && Math.hypot(this.x - this.spot.x, this.z - this.spot.z) < 1.2) { this.seated = true; this.heading = this.spot.face; this.wait = NB.rr(60, 180); }
           this.wait -= dt;
@@ -226,6 +240,68 @@
       else if (this.pause > 0 && this.hop <= 0 && view === 'down') rec = this.frames.wave[Math.floor(performance.now() / 220) % 2]; // wave
       else rec = this.frames[view][this.moving ? [1, 0, 2, 0][Math.floor(this.anim * 7) % 4] : 0];
       place(this, rec, this.x, this.hopY(), this.z);
+    }
+    // ---- boule at Ifangweg 23 (routine entry with do: 'boule'): throw the cochonnet ("Säuli"), then six balls
+    //      (two sets, he plays both sides), count, collect, start again. Balls are drawn by NB.UI ----
+    updateBoule(dt) {
+      const K = map.kochProps, g = map.bouleGame || (map.bouleGame = { coch: null, balls: [], fly: null, wait: 2 });
+      g.by = this; this.moving = false; this.heading = K.throwFace;
+      const talk = (lines, p) => { if (Math.random() < p) { const l = NB.pick(lines); say(this, l, { quiet: true }); if (NB.UI.onScreen(this)) NB.Audio.babble(l, this.c.voice, { pos: this, vol: 0.5 }); } };
+      if (g.fly) {
+        g.fly.t += dt / g.fly.dur;
+        if (g.fly.t < 1) return;
+        const fl = g.fly; g.fly = null;
+        if (fl.coch) { g.coch = { x: fl.x1, z: fl.z1 }; return; }
+        const hit = g.balls.some((b) => Math.hypot(b.x - fl.x1, b.z - fl.z1) < 0.5);
+        g.balls.push({ x: fl.x1, z: fl.z1, col: fl.col });
+        if (NB.UI.onScreen(this)) NB.Audio.play(hit ? 'clink' : 'click', { pos: { x: fl.x1, z: fl.z1 }, vol: hit ? 0.7 : 0.25, rate: hit ? 1 : 0.6 });
+        const d = Math.hypot(fl.x1 - g.coch.x, fl.z1 - g.coch.z);
+        if (d < 0.3) talk(this.c.bouleGood || ['Dä ligt! 🎯'], 0.7);
+        else if (d > 1.4) talk(this.c.bouleBad || ['Ohje…'], 0.5);
+        else if (hit) talk(['Klack! 💥', 'Tire! Wäg mit dere!'], 0.6);
+        return;
+      }
+      g.wait -= dt;
+      this.chatCd -= dt;
+      if (this.chatCd <= 0) { this.chatCd = NB.rr(30, 60); talk(this.c.bouleLines || ['Pointe oder tire?'], 1); }
+      if (g.wait > 0) return;
+      const T = K.dir, N = [T[1], -T[0]], S0 = K.throwPt;
+      const pt = (a, c) => ({ x: S0.x + T[0] * a + N[0] * c, z: S0.z + T[1] * a + N[1] * c });
+      const hand = { x: this.x + Math.sin(this.heading) * 0.3, z: this.z + Math.cos(this.heading) * 0.3 };
+      if (!g.coch) { // the cochonnet first
+        const p = pt(NB.rr(6, 9.5), NB.rr(-0.8, 0.8));
+        g.fly = { coch: true, x0: hand.x, z0: hand.z, x1: p.x, z1: p.z, t: 0, dur: 0.9, h: 1.0 }; g.wait = NB.rr(2.5, 4);
+        this.hop = 0.2;
+      } else if (g.balls.length < 6) {
+        const sp = Math.random() < 0.55 ? 0.35 : 1.5;
+        let a = (g.coch.x - S0.x) * T[0] + (g.coch.z - S0.z) * T[1] + NB.rr(-sp, sp), c = (g.coch.x - S0.x) * N[0] + (g.coch.z - S0.z) * N[1] + NB.rr(-sp, sp);
+        a = NB.clamp(a, 2, K.court.len - 1.3); c = NB.clamp(c, -K.court.wid / 2 + 0.25, K.court.wid / 2 - 0.25);
+        const p = pt(a, c);
+        g.fly = { x0: hand.x, z0: hand.z, x1: p.x, z1: p.z, t: 0, dur: 1.2, h: 2.2, col: g.balls.length % 2 ? '#b08d57' : '#c9ccd6' };
+        g.wait = NB.rr(4, 7); this.hop = 0.2;
+      } else { // count: the ball nearest to the cochonnet wins, then pick them all up
+        const best = g.balls.slice().sort((p, q) => Math.hypot(p.x - g.coch.x, p.z - g.coch.z) - Math.hypot(q.x - g.coch.x, q.z - g.coch.z))[0];
+        talk(best.col === '#c9ccd6' ? ['Silber gwünnt! 🥈', 'Punkt für Silber!'] : ['Bronze gwünnt! 🥉', 'Punkt für Bronze!'], 0.8);
+        g.balls = []; g.coch = null; g.wait = NB.rr(6, 10);
+      }
+    }
+    // ---- tending the hydrangeas (routine entry with do: 'garden'): water a bush, then move on to the next one ----
+    updateGarden(dt) {
+      const sp = this.spot, b = sp && sp.bush;
+      this.moving = false;
+      if (sp && sp.face != null) this.heading = sp.face;
+      if (this.gardenT == null) {
+        this.gardenT = NB.rr(12, 20); this.waterT = 0;
+        const winter = NB.season === 'winter', lines = (winter && this.c.gardenWinter) || this.c.gardenLines;
+        if (lines && Math.random() < 0.45) { const l = NB.pick(lines); say(this, l, { quiet: true }); if (NB.UI.onScreen(this)) NB.Audio.babble(l, this.c.voice, { pos: this, vol: 0.5 }); }
+      }
+      this.gardenT -= dt; this.waterT += dt;
+      const canWater = b && NB.season !== 'winter' && !['rain', 'snow'].includes(NB.Env.weather) && NB.Env.darkness < 0.75;
+      if (canWater && this.waterT < 4.5) {
+        this.dropT = (this.dropT || 0) - dt;
+        if (this.dropT <= 0) { this.dropT = 0.1; NB.UI.fx(b.x + NB.rr(-0.35, 0.35), 1.0, b.z + NB.rr(-0.35, 0.35), 'water', { vy: -1.6, life: 0.55 }); }
+      }
+      if (this.gardenT <= 0) { this.gardenT = null; const t = claimSpot(this, 'hortensien'); if (t) this.goTo(t.x, t.z); }
     }
     // ---- fishing at the Löli-Weiher (routine entry with do: 'fish') ----
     startFishing() {
@@ -281,6 +357,7 @@
       if (NB.UI.onScreen(this)) NB.Audio.babble(line, this.c.voice, { pos: this, vol: 0.5 });
     }
     click() {
+      if (this.state === 'flee') { this.speak(NB.pick(['Nöd jetzt!', 'Mrrau!'])); return; }
       const now = performance.now() / 1000;
       this.clicks = now - this.lastClick < 6 ? this.clicks + 1 : 0;
       this.lastClick = now;
@@ -314,6 +391,10 @@
       return night ? 0.7 : NB.inWindow(m, '12:30', '15:00') ? 0.45 : 0.15;
     }
     update(dt) {
+      if (this.state === 'flee') {
+        if (this.stepPath(dt) || !this.path) { this.state = 'sit'; this.speed = 1.4; this.timer = NB.rr(2, 5); }
+        return this.pose(dt);
+      }
       if (this.state === 'zoom') { this.updateZoomies(dt); return this.pose(dt); }
       if (this.state === 'ride') {
         const d = this.ride; this.rideT -= dt;
@@ -413,7 +494,7 @@
     }
     // a vehicle is coming: dash a few metres off to the side (sleeping cats wake up first)
     scare(v) {
-      if (this.state === 'zoom' || this.purrT > 0 || this.held || (this.scaredT && performance.now() / 1000 < this.scaredT)) return;
+      if (this.state === 'flee' || (this.scaredT && performance.now() / 1000 < this.scaredT)) return;
       this.scaredT = performance.now() / 1000 + 6;
       const hx = Math.sin(v.heading), hz = Math.cos(v.heading);
       const side = (this.x - v.x) * hz - (this.z - v.z) * hx >= 0 ? 1 : -1; // which side of the car we are on
@@ -421,8 +502,10 @@
         const d = NB.rr(4, 8), x = this.x + hz * side * d + hx * NB.rr(-2, 2), z = this.z - hx * side * d + hz * NB.rr(-2, 2);
         const [cx, cz] = map.toCell(x, z);
         if (map.inB(cx, cz) && this.cost[cz * map.w + cx] && map.streetDist(x, z) > 1 && this.goTo(x, z)) {
+          if (this.purr) { this.purr.stop(); this.purr = null; }
           if (this.state === 'sleep') this.speak('Mrrr!');
-          this.state = 'walk'; this.anim += 0.5; this.timer = NB.rr(3, 8);
+          else if (Math.random() < 0.5) this.speak(NB.pick(['Pfffff! 🙀', 'Mrrrau!', v.type === 'bus' ? 'Hey, du grosse Chischte!' : 'Hey, du Raser!']));
+          this.purrT = 0; this.held = false; this.state = 'flee'; this.speed = 5; this.anim += 0.5;
           return;
         }
       }
@@ -433,7 +516,7 @@
       this.path = null; this.purrT = Math.max(this.purrT, t);
       if (!this.purr) { this.purr = NB.Audio.loop('purr', { pos: this }); this.speak('Rrrrr… ♥'); }
     }
-    holdStart() { this.held = true; this.startPurr(1); return true; }
+    holdStart() { if (this.state === 'flee') return false; this.held = true; this.startPurr(1); return true; }
     holdEnd() { this.held = false; this.purrT = Math.max(this.purrT, 0.6); }
     get visible() { return true; }
     top() { return { x: this.x, y: 1.1, z: this.z }; }
@@ -599,8 +682,8 @@
       this.pts = laneOffset(base, 1.5);
       this.x = this.pts[0].x; this.z = this.pts[0].z; this.i = 1; this.heading = 0; this.life = 0;
       this.color = opts.color || NB.pick(type === 'tractor' ? TRACTOR_COLORS : CAR_COLORS); this.sprite = new PIXI.Sprite(); this.shown = null;
-      this.maxSpeed = type === 'bus' ? 7 : type === 'tractor' ? 4 : type === 'mini' ? 7 : type === 'tanker' ? 6 : type === 'firetruck' ? 15 : NB.rr(8, 10);
-      this.speed = this.maxSpeed; this.stopT = 0; this.done = false; this.putT = 0;
+      this.maxSpeed = type === 'bus' ? 7 : type === 'tractor' ? 4 : type === 'mini' ? 7 : type === 'tanker' ? 6 : type === 'firetruck' ? 15 : type === 'jeep' ? 6.5 : NB.rr(8, 10);
+      this.speed = this.maxSpeed; this.stopT = 0; this.done = false; this.putT = 0; this.pull = 0;
       this.name = opts.name || (type === 'bus' ? 'Postauto' : type === 'tractor' ? 'Traktor' : 'Auto');
       this.lines = opts.lines || null;
       this.parkAt = opts.parkAt || null; this.parked = false; this.departing = false;
@@ -609,12 +692,18 @@
         if (opts.parkedNow) { this.pts = []; this.i = 0; this.x = this.parkAt.x; this.z = this.parkAt.z; this.heading = this.shown = this.parkAt.heading; this.parked = true; this.life = 5; }
         else this.pts = laneOffset(base.slice(0, k + 1), 1.5).concat([{ x: this.parkAt.x, z: this.parkAt.z }]);
       }
+      if (opts.path && !opts.parkedNow) { this.pts = opts.path; this.x = this.pts[0].x; this.z = this.pts[0].z; this.i = 1; }
       this.stops = [];
       if (type === 'bus') for (const s of map.busStops) {
         let best = -1, bd = 8;
         base.forEach((p, k) => { const d = Math.hypot(p.x - s.x, p.z - s.z); if (d < bd) { bd = d; best = k; } });
         if (best > 0) this.stops.push(best);
       }
+    }
+    // leave the parking spot along a given path
+    departAlong(pts) {
+      this.pts = [{ x: this.x, z: this.z }].concat(pts); this.i = 1;
+      this.parked = false; this.departing = true; this.life = 5; this.speed = 0;
     }
     // from the parking spot back onto the road and out of the village
     depart(reverse) {
@@ -627,6 +716,7 @@
       this.life += dt;
       if (this.parked) return this.pose(dt);
       if (this.type === 'tractor') tractorNoise(this, dt);
+      else if (this.type === 'jeep') tractorNoise(this, dt, 1.45);
       const p = this.pts[this.i];
       if (!p) {
         if (this.parkAt && !this.departing) { this.parked = true; this.speed = 0; this.heading = this.parkAt.heading; return this.pose(dt); }
@@ -637,11 +727,12 @@
       if (d > 0.01) this.heading = Math.atan2(dx, dz);
       let target = this.maxSpeed;
       if (this.parkAt && (this.i >= this.pts.length - 1 || (this.departing && this.i <= 1))) target = Math.min(target, 3); // crawl into / out of the yard
+      if (p.slow) target = Math.min(target, 3.2); // driveway
       // people on the street ahead jump aside, cats scurry off
       for (const o of E.list) {
         if (o.kind === 'cat') {
           const ox = o.x - this.x, oz = o.z - this.z, ahead = (ox * dx + oz * dz) / (d || 1), side = Math.abs(ox * dz - oz * dx) / (d || 1);
-          if (ahead > -1 && ahead < 14 && side < 3) o.scare(this);
+          if (ahead > -1 && ahead < 24 && side < 3.5) o.scare(this);
           continue;
         }
         if (o.kind !== 'villager' || o.inside || o.away || o.evading) continue;
@@ -655,7 +746,10 @@
         if (o === this || o.parked || (o.kind !== 'vehicle' && !(o.kind === 'villager' && !o.inside && !o.away) && o.kind !== 'cat' && !(o.kind === 'dog' && !o.away))) continue;
         const ox = o.x - this.x, oz = o.z - this.z;
         const ahead = (ox * dx + oz * dz) / (d || 1), side = Math.abs(ox * dz - oz * dx) / (d || 1);
-        if (ahead > 0 && ahead < 14 && side < 2) target = Math.min(target, Math.max(0, (ahead - (o.kind === 'vehicle' ? 8 : 3.5)) * 1.5));
+        if (!(ahead > 0 && ahead < 14 && side < 2)) continue;
+        if (o.kind === 'vehicle') { if (!(o.stopT > 0 && o.pull > 0.6)) target = Math.min(target, Math.max(0, (ahead - 8) * 1.5)); }
+        else if (o.evading || o.state === 'flee') { if (side < 1.4) target = Math.min(target, 3 + ahead * 0.5); } // already getting out of the way: just slow down
+        else target = Math.min(target, Math.max(0, (ahead - 3.5) * 1.5));
       } else target = Math.min(target, 2);
       this.speed += NB.clamp(target - this.speed, -12 * dt, (this.type === 'firetruck' ? 8 : 4) * dt);
       const step = this.speed * dt;
@@ -665,7 +759,10 @@
     }
     pose(dt) {
       this.shown = this.shown == null ? this.heading : angleLerp(this.shown, this.heading, Math.min(1, dt * 6));
-      place(this, NB.Models.vehicle(this.type, this.color, this.shown), this.x, 0, this.z);
+      // the Postauto pulls in to the right at its stops so cars can pass
+      this.pull += NB.clamp((this.stopT > 0.6 ? 1 : 0) - this.pull, -2 * dt, 2 * dt);
+      const po = this.pull * 1.4;
+      place(this, NB.Models.vehicle(this.type, this.color, this.shown), this.x - Math.cos(this.heading) * po, 0, this.z + Math.sin(this.heading) * po);
       // fade in / out at the ends of the street (not when pulling into the yard)
       const left = this.pts.length - this.i, arriving = this.parkAt && !this.departing;
       this.sprite.alpha = Math.min(1, this.life / 0.8, left < 2 && !arriving ? Math.max(0, left / 2) : 1);
@@ -902,6 +999,117 @@
   }
   const visits = [];
 
+  // ---------------------------------------------------------------- residents' car trips (André's army jeep)
+  // NB.Data.outings: { parking (map.parkings key), street (the street the driveway joins), car: { type, color, name, lines },
+  //   trips: [{ members, go: [from, to], away: [min, max] minutes, chance, cruise, leave: { id: line }, back: { id: line } }] }
+  // The car stays parked at home; for each trip that happens today the members walk to it, drive off along their
+  // street and the Niederwilerstrasse, are away for a while (a cruising jeep rumbles through once) and come back.
+  class Outing {
+    constructor(d, idx) {
+      this.d = d; this.idx = idx; this.parking = map.parkings && map.parkings[d.parking];
+      this.state = 'home'; this.car = null; this.trip = null; this.cruiser = null;
+      this.schedule();
+    }
+    schedule() {
+      this.day = NB.clock.day || 1;
+      const r = NB.seeded(this.day * 13 + 5 + this.idx * 97);
+      this.trips = this.d.trips.map((t) => {
+        const go = NB.toMin(t.go[0]) + r() * (NB.toMin(t.go[1]) - NB.toMin(t.go[0])), on = r() < (t.chance == null ? 1 : t.chance);
+        return Object.assign({}, t, { goAt: go, backAt: go + t.away[0] + r() * (t.away[1] - t.away[0]), on, done: !on });
+      });
+    }
+    members(trip) { return E.list.filter((e) => e.kind === 'villager' && trip.members.includes(e.c.id)); }
+    carOpts(extra) { return Object.assign({ color: this.d.car.color, name: this.d.car.name, lines: this.d.car.lines }, extra); }
+    // road between the map edge and the parking spot: Niederwilerstrasse (route) -> own street -> driveway (A*)
+    road(arriving) {
+      if (!this.rd) {
+        const P = this.parking, route = map.route;
+        const st = NB.Scene.streets.filter((q) => q.name === this.d.street).sort((a, b) => b.pts.length - a.pts.length)[0];
+        const dense = [];
+        st.pts.forEach(([x, z], k) => {
+          if (k) { const [x0, z0] = st.pts[k - 1], n = Math.max(1, Math.ceil(Math.hypot(x - x0, z - z0) / 2)); for (let j = 1; j <= n; j++) dense.push({ x: x0 + ((x - x0) * j) / n, z: z0 + ((z - z0) * j) / n }); }
+          else dense.push({ x, z });
+        });
+        const e = nearestIdx(dense, P);
+        // drive to the nearer end of the street that joins the route (counted along the street)
+        const endDist = (p) => Math.min(...route.map((q) => Math.hypot(q.x - p.x, q.z - p.z)));
+        const firstOk = endDist(dense[0]) < 4, lastOk = endDist(dense[dense.length - 1]) < 4;
+        const useFirst = firstOk && (!lastOk || e < dense.length - 1 - e) || (!firstOk && !lastOk && endDist(dense[0]) < endDist(dense[dense.length - 1]));
+        const toEnd = useFirst ? dense.slice(0, e + 1).reverse() : dense.slice(e);
+        const k = nearestIdx(route, toEnd[toEnd.length - 1]);
+        const [sx, sz] = map.toCell(dense[e].x, dense[e].z), [tx, tz] = map.toCell(P.x, P.z);
+        // driveway over the lawn, not across the boule court / flower beds
+        const cost = map.walkCost.slice(), K = map.kochProps;
+        if (K) for (let cz = 0; cz < map.h; cz++) for (let cx = 0; cx < map.w; cx++) {
+          const c = map.cellCentre(cx, cz), dx = c.x - K.court.x, dz = c.z - K.court.z;
+          const [a, b] = K.court.alongX ? [dx, dz] : [dz, dx];
+          if (Math.abs(a) < K.court.len / 2 + 1 && Math.abs(b) < K.court.wid / 2 + 1) cost[cz * map.w + cx] = 0;
+        }
+        const cells = NB.findPath(cost, map.w, map.h, sx, sz, tx, tz) || [];
+        const drive = cells.filter((_, j) => j % 3 === 2).map(({ x: cx, y: cz }) => Object.assign(map.cellCentre(cx, cz), { slow: true }));
+        this.rd = { toEnd, k, drive };
+      }
+      const { toEnd, k, drive } = this.rd, route = map.route;
+      const out = Math.random() < 0.5 ? route.slice(k) : route.slice(0, k + 1).reverse(); // junction -> one end of the village
+      if (arriving) {
+        const road = out.slice().reverse().concat(toEnd.slice().reverse());
+        return laneOffset(road, 1.4).concat(drive, [{ x: this.parking.x, z: this.parking.z, slow: true }]);
+      }
+      return drive.slice().reverse().concat(laneOffset(toEnd.concat(out), 1.4));
+    }
+    start() {
+      if (!this.parking) return;
+      const min = NB.clock.minutes();
+      const t = this.trips.find((q) => q.on && min >= q.goAt && min < q.backAt);
+      for (const q of this.trips) if (q.goAt <= min) q.done = true;
+      if (t) { this.trip = t; t.cruised = true; this.state = 'out'; this.members(t).forEach((m) => { m.enterCar(); }); }
+      else this.car = add(new Vehicle(this.d.car.type, false, this.carOpts({ parkAt: this.parking, parkedNow: true })));
+    }
+    update(dt) {
+      if (!this.parking) return;
+      const min = NB.clock.minutes(), newDay = (NB.clock.day || 1) !== this.day;
+      if (this.state === 'home') {
+        if (newDay) this.schedule();
+        const t = this.trips.find((q) => !q.done && min >= q.goAt);
+        if (!t) return;
+        t.done = true;
+        const ms = this.members(t).filter((m) => !m.away);
+        if (min >= t.backAt || !this.car || !this.car.parked || ms.length < t.members.length) return; // missed (time jump) or someone is away
+        this.trip = t; this.state = 'boarding'; this.t = 0;
+        ms.forEach((m) => m.goToCar(this.parking, false, t.leave && t.leave[m.c.id]));
+        return;
+      }
+      const t = this.trip;
+      if (this.state === 'boarding') {
+        this.t += dt;
+        const ms = this.members(t);
+        if (ms.every((m) => m.away) || this.t > 150) {
+          ms.forEach((m) => { if (!m.away) m.enterCar(); });
+          this.car.departAlong(this.road(false)); this.state = 'out';
+          if (NB.UI.onScreen(this.car)) NB.Audio.play('honk', { pos: this.car, rate: 0.85, vol: 0.5 });
+        }
+        return;
+      }
+      if (this.state === 'out') {
+        if (this.car && this.car.done) this.car = null;
+        if (this.cruiser && this.cruiser.done) this.cruiser = null;
+        // cruising: halfway through the ride the jeep rumbles through the village once
+        if (t.cruise && !t.cruised && !this.car && min >= (t.goAt + t.backAt) / 2) { t.cruised = true; this.cruiser = add(new Vehicle(this.d.car.type, Math.random() < 0.5, this.carOpts())); }
+        if ((min >= t.backAt || newDay) && !this.car && !this.cruiser) {
+          this.car = add(new Vehicle(this.d.car.type, false, this.carOpts({ parkAt: this.parking, path: this.road(true) })));
+          this.state = 'returning';
+        }
+        return;
+      }
+      if (this.state === 'returning' && this.car.parked) {
+        this.members(t).forEach((m, i) => m.arrive(this.parking, false, i, t.back && t.back[m.c.id]));
+        this.state = 'home'; this.trip = null;
+        if (newDay) this.schedule();
+      }
+    }
+  }
+  const outings = [];
+
   let nextCar = 4, nextBus = 8, busDir = 0, nextTractor = 14;
   // a tractor works a field by day (not in winter, not in rain/snow); otherwise one may drive through the village
   function spawnFieldTractor(fieldIndex) {
@@ -938,15 +1146,18 @@
       const v = new Visit(d, members, idx); visits.push(v);
       if (v.here(NB.clock.minutes())) v.start(true);
     });
+    (NB.Data.outings || []).forEach((d, idx) => { const o = new Outing(d, idx); outings.push(o); o.start(); });
     (NB.Data.animals || []).filter((a) => a.kind === 'cat').forEach((a) => add(new Cat(a)));
     if (map.water.length) (NB.Data.animals || []).filter((a) => a.kind === 'duck').forEach((a) => add(new Duck(a)));
     (NB.Data.animals || []).filter((a) => a.kind === 'dog').forEach((a) => { const o = E.list.find((e) => e.kind === 'villager' && e.c.id === a.owner); if (o) add(new Dog(a, o)); });
   };
   E.spawnFieldTractor = spawnFieldTractor; // for tests / the console
   E.visits = visits;
+  E.outings = outings;
   E.update = function (dt) {
     spawnTraffic(dt);
     for (const v of visits) v.update(dt);
+    for (const o of outings) o.update(dt);
     updateFire(dt);
     for (const e of E.list) e.update(dt);
     E.list = E.list.filter((e) => !e.done);

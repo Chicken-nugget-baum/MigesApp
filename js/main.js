@@ -112,6 +112,13 @@
   // ---------- trees, bushes ----------
   const rnd = NB.seeded(77);
   const occupied = [];
+  if (map.kochProps) { // keep trees off the boule court, the hydrangeas and the jeep's spot
+    const K = map.kochProps, c = K.court;
+    for (let a = -c.len / 2; a <= c.len / 2; a += 2) for (let m = -2.5; m <= 2.5; m += 2.5) occupied.push(c.alongX ? [c.x + a, c.z + m] : [c.x + m, c.z + a]);
+    K.bushes.forEach((b) => occupied.push([b.x, b.z]));
+    occupied.push([K.bench.x, K.bench.z]);
+    if (K.parking) occupied.push([K.parking.x, K.parking.z]);
+  }
   const freeSpot = (x, z, streetGap, bGap, gap) => map.streetDist(x, z) > streetGap && !map.inBuilding(x, z, bGap) && !map.fieldAt(x, z) && map.pondDist(x, z) > 4 && !occupied.some(([ox, oz]) => Math.hypot(ox - x, oz - z) < gap);
   for (let k = 0; k < 1200 && occupied.length < 280; k++) {
     const x = NB.lerp(bx0 + 10, bx1 - 10, rnd()), z = NB.lerp(bz0 + 10, bz1 - 10, rnd());
@@ -174,6 +181,23 @@
       info: { name: 'Sitzplatz', lines: ['De Sitzplatz – zäme brätle, zäme vibe-code.', 'Do wird am Abig gschwätzt.'], sound: 'click', top: { x: table.x, y: 1.6, z: table.z } } });
   }
 
+  // ---------- Ifangweg 23: André's boule court, Monika's hydrangeas from the Gärtnerei Gisler ----------
+  if (map.kochProps) {
+    const K = map.kochProps, c = K.court;
+    const frec = M.bouleFrame(c.alongX ? c.len : c.wid, c.alongX ? c.wid : c.len);
+    pickables.push({ sprite: placeStatic(frec, c.x, 0, c.z, zkey(c.x, c.z) - 50), rec: frec,
+      info: { name: 'Boule-Bahn', lines: ["D'Boule-Bahn vom André Koch. 🎯", 'Pétanque uf Nesselnbacher Art: Kies, Chugle und viel Gfühl.', "Wer am nöchschte bim Säuli isch, gwünnt.", 'Do wird nöd tschuttet – do wird pointiert!'], sound: 'click', top: { x: c.x, y: 0.8, z: c.z } } });
+    const brec = M.bench(K.bench.heading);
+    pickables.push({ sprite: placeStatic(brec, K.bench.x, 0, K.bench.z, zkey(K.bench.x, K.bench.z)), rec: brec,
+      info: { name: 'Bänkli bi de Boule-Bahn', lines: ["Vo do us luegt d'Monika zue, wie de André spielt.", 'Zueluege isch au e Sport.'], sound: 'click', top: { x: K.bench.x, y: 1.4, z: K.bench.z } } });
+    const HYD_LINES = { spring: 'Si tribed scho – im Summer blüehed si wider.', summer: 'Blau, rosa, lila – alles vo de Gärtnerei Gisler.', autumn: "Jetzt werded d'Blüete antik. Au schön, seit d'Monika.", winter: "Im Winter schlofed d'Hortensie. Nöd abschniide!" };
+    K.bushes.forEach((b, i) => {
+      const rec = M.hortensie(i);
+      pickables.push({ sprite: placeStatic(rec, b.x, 0, b.z, zkey(b.x, b.z)), rec,
+        info: { name: 'Hortensie', lines: ["D'Monika ihri Hortensie – vo de Gärtnerei Gisler z Niederwil. 🌸", HYD_LINES[NB.season] || HYD_LINES.summer, 'Blau wird sie nur, wenn de Bode suur isch. Hed de Gisler gseit.'], sound: 'click', top: { x: b.x, y: 1.1, z: b.z } } });
+    });
+  }
+
   // ---------- ground: terrain codes (top-down, 2 cells / m) painted lazily into screen-aligned chunks ----------
   const TM = 2, MARGIN = 240;
   const tx0 = bx0 - MARGIN, tz0 = bz0 - MARGIN;
@@ -210,6 +234,13 @@
     for (const s of S.streets) if (s.kind !== 'track') stroke(s, s.width + 2.4, '#ff0000');
     for (const s of S.streets) if (s.kind === 'track') stroke(s, s.width, '#ff00ff'); // gravel
     for (const s of S.streets) if (s.kind !== 'track') stroke(s, s.width, '#00ff00');
+    if (map.kochProps) { // boule court + the jeep's spot: gravel
+      const K = map.kochProps;
+      tg.fillStyle = '#ff00ff'; tg.beginPath();
+      K.corners.forEach((p, k) => (k ? tg.lineTo((p.x - tx0) * TM, (p.z - tz0) * TM) : tg.moveTo((p.x - tx0) * TM, (p.z - tz0) * TM)));
+      tg.closePath(); tg.fill();
+      if (K.parking) { tg.beginPath(); tg.arc((K.parking.x - tx0) * TM, (K.parking.z - tz0) * TM, 2.6 * TM, 0, Math.PI * 2); tg.fill(); }
+    }
     const d = tg.getImageData(0, 0, tw, th).data;
     for (let i = 0; i < terrain.length; i++) {
       const R = d[i * 4] > 127, G = d[i * 4 + 1] > 127, B = d[i * 4 + 2] > 127;
@@ -579,6 +610,7 @@
     follow = cats[catIdx];
     NB.UI.say(follow, '🐾 ' + follow.name, { life: 2.5 });
   }
+  NB.follow = (e) => { follow = e || null; }; // console / tests: camera follows any entity or {x, z}
   function updateFollow(dt) {
     if (!follow) return;
     if (follow.done) { follow = null; return; }
