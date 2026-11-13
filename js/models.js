@@ -278,18 +278,27 @@
     m.solid(V, F, col, o);
   };
   // little sitting place: paved round patch, round table, four stools
-  M.sitzplatz = function () {
-    if (!treeCache.sitzplatz) {
+  // the Sitzplatz is split into pieces with their own depth: paving (ground), table, four stools (M.stool) - so people
+  // sitting behind the table are drawn behind it but in front of the paving, and nobody vanishes behind one big sprite
+  M.sitzPaving = function () {
+    if (!treeCache.sitzPaving) { const m = I.model(); prism8(m, 0, 0, 2.6, 0, 0.04, '#d8cfbf', { key: -1e6 }); treeCache.sitzPaving = m.render({ shadow: false }); }
+    return treeCache.sitzPaving;
+  };
+  M.sitzTable = function () {
+    if (!treeCache.sitzTable) {
       const m = I.model();
-      prism8(m, 0, 0, 2.6, 0, 0.04, '#d8cfbf', { key: -1e6 });
       m.shadow(-0.6, -0.6, 1.2, 1.2, 0.5);
       m.cbox(0, 0, 0, 0.14, 0.14, 0.74, '#5a3520');
       prism8(m, 0, 0, 0.75, 0.74, 0.08, '#a8673a');
-      [[1.25, 0], [-1.25, 0], [0, 1.25], [0, -1.25]].forEach(([x, z]) => { m.cbox(x, z, 0, 0.08, 0.08, 0.42, '#5a3520'); prism8(m, x, z, 0.24, 0.42, 0.07, '#c0503f'); });
-      treeCache.sitzplatz = m.render();
+      treeCache.sitzTable = m.render();
     }
-    return treeCache.sitzplatz;
+    return treeCache.sitzTable;
   };
+  M.stool = function () {
+    if (!treeCache.stool) { const m = I.model(); m.cbox(0, 0, 0, 0.08, 0.08, 0.42, '#5a3520'); prism8(m, 0, 0, 0.24, 0.42, 0.07, '#c0503f'); treeCache.stool = m.render(); }
+    return treeCache.stool;
+  };
+  M.sitzplatz = M.sitzTable;
   // boule court: wooden frame only (the gravel is painted into the ground). w along u, d along v
   M.bouleFrame = function (w, d) {
     const key = 'boule' + w + 'x' + d;
@@ -520,6 +529,127 @@
       dip: mk(DUCK.dip, { shadow: false }),
       walk: [mk(DUCK.swim.concat(['...f..f...']), { shadowW: 8, shadowH: 1.4 }), mk(DUCK.swim.concat(['..f....f..']), { shadowW: 8, shadowH: 1.4 })],
     };
+  };
+
+  // petrol station: canopy on four pillars over two pumps, a small shop behind, price sign (faces +z = the road)
+  M.fuelStation = function (heading) {
+    const key = 'fuel' + Math.round(heading * 100);
+    if (!treeCache[key]) {
+      const m = I.model(heading);
+      m.shadow(-6, -3.5, 12, 7, 4.6);
+      m.shadow(-6, -9.5, 12, 5.5, 3.4);
+      [[-5, -2.5], [5, -2.5], [-5, 2.5], [5, 2.5]].forEach(([x, z]) => m.cbox(x, z, 0, 0.4, 0.4, 4.4, '#d9dde2'));
+      m.cbox(0, 0, 4.4, 12.4, 7.2, 0.5, '#f4f4f0');
+      m.cbox(0, 3.62, 4.0, 12.4, 0.06, 0.9, '#2f6fb5', { noOutline: true });
+      m.cbox(0, 3.64, 4.25, 12.4, 0.04, 0.2, '#f2c23a', { noOutline: true });
+      [[-2.2, 0], [2.2, 0]].forEach(([x, z]) => { m.cbox(x, z, 0, 2.6, 1.2, 0.18, '#aeb5bd'); m.cbox(x, z, 0.18, 1.0, 0.7, 1.7, '#e9ecef'); m.cbox(x, z + 0.37, 0.9, 0.7, 0.04, 0.5, '#2b3d55', { noOutline: true, light: '#9ac6ff' }); m.cbox(x + 0.42, z, 0.5, 0.1, 0.5, 1.1, '#3a3a40'); });
+      m.cbox(0, -7, 0, 9, 5, 3.2, '#f6f3ec');
+      m.gable(-4.8, -9.8, 3.2, 9.6, 5.6, 1.4, 'u', '#8a8f99');
+      m.cbox(0, -4.47, 0, 2.2, 0.06, 2.3, '#9ccbe0', { light: '#fff2c8' });
+      [-3, 2.4].forEach((x) => m.cbox(x, -4.47, 1.1, 1.6, 0.06, 1.1, '#9ccbe0', { light: '#fff2c8' }));
+      m.cbox(7.4, 2.5, 0, 0.25, 0.25, 5.2, '#55555c');
+      m.cbox(7.4, 2.5, 4.3, 1.4, 0.3, 2.0, '#2f6fb5', { light: '#9ac6ff' });
+      m.cbox(7.4, 2.68, 4.6, 1.1, 0.04, 0.3, '#ffffff', { noOutline: true });
+      m.cbox(7.4, 2.68, 5.1, 1.1, 0.04, 0.3, '#ffffff', { noOutline: true });
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+
+  // ---------- Hirschfarm: fence segments, gate, feeding rack, shelter; pumpkin stand and piles ----------
+  M.fence = function (len, heading, gate) {
+    const key = 'fence' + len.toFixed(1) + '/' + Math.round(heading * 100) + (gate ? 'g' : '');
+    if (!treeCache[key]) {
+      const m = I.model(heading);
+      const wood = gate ? '#a8824f' : '#7a5a3a', rail = gate ? '#c09a62' : '#95714a';
+      // the model's length runs along its heading (+z), like a vehicle
+      for (let z = -len / 2; z <= len / 2 + 0.01; z += 2) m.cbox(0, z, 0, 0.16, 0.16, 1.3, wood);
+      m.cbox(0, 0, 0.5, 0.07, len, 0.1, rail, { noOutline: true });
+      m.cbox(0, 0, 0.95, 0.07, len, 0.1, rail, { noOutline: true });
+      if (gate) { m.cbox(0, 0, 0.2, 0.06, len - 0.3, 0.08, rail, { noOutline: true }); m.cbox(0.06, 0, 0.72, 0.05, 0.1, 0.9, rail, { noOutline: true }); }
+      treeCache[key] = m.render({ shadow: false });
+    }
+    return treeCache[key];
+  };
+  M.feedRack = function (heading) {
+    const key = 'rack' + Math.round(heading * 100);
+    if (!treeCache[key]) {
+      const m = I.model(heading);
+      m.shadow(-1.1, -0.5, 2.2, 1.0, 1.6);
+      [-0.9, 0.9].forEach((z) => m.cbox(0, z, 0, 0.14, 0.14, 1.7, '#6b4a2e'));
+      m.cbox(-0.3, 0, 0.5, 0.08, 2.0, 0.7, '#95714a');
+      m.cbox(0.3, 0, 0.5, 0.08, 2.0, 0.7, '#95714a');
+      m.cbox(0, 0, 0.55, 0.5, 1.8, 0.6, '#e2c25e');
+      m.gable(-0.7, -1.2, 1.7, 1.4, 2.4, 0.5, 'v', '#8a5a48');
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  M.deerShelter = function (heading) {
+    const key = 'shelter' + Math.round(heading * 100);
+    if (!treeCache[key]) {
+      const m = I.model(heading);
+      m.shadow(-2, -1.5, 4, 3, 2.3);
+      [[-1.85, -1.35], [1.85, -1.35], [-1.85, 1.35], [1.85, 1.35]].forEach(([x, z]) => m.cbox(x, z, 0, 0.18, 0.18, 2.3, '#6b4a2e'));
+      m.cbox(0, -1.4, 0, 3.9, 0.12, 2.3, '#8a6a46');
+      m.cbox(0, 0, 2.3, 4.3, 3.3, 0.15, '#7a4a3a');
+      m.cbox(0, 0.4, 0, 2.2, 1.6, 0.25, '#e2c25e');
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  const PUMPKIN = ['#e8812a', '#d9701f', '#f0a040', '#c8c08a', '#9fbf6a'];
+  const pumpkin = (m, x, z, y, r, k) => { prism8(m, x, z, y, r, r * 1.2, PUMPKIN[k % PUMPKIN.length]); m.cbox(x, z, y + r * 1.2, 0.08, 0.08, 0.12, '#5a7a3a', { noOutline: true }); };
+  M.pumpkinStand = function (heading, big) {
+    const key = 'pstand' + Math.round(heading * 100) + (big ? 'B' : '');
+    if (!treeCache[key]) {
+      const m = I.model(heading), r = NB.seeded(21);
+      m.shadow(-1.5, -0.5, 3, 1, 0.9);
+      [-1.3, 1.3].forEach((x) => m.cbox(x, 0, 0, 0.12, 0.8, 0.8, '#6b4a2e'));
+      m.cbox(0, 0, 0.8, 3.0, 1.0, 0.08, '#a8824f');
+      for (let i = 0; i < (big ? 9 : 5); i++) pumpkin(m, -1.2 + i * (2.4 / (big ? 8 : 4)), -0.2 + ((i % 2) * 0.4), 0.88, 0.18 + r() * 0.08, i);
+      m.cbox(-1.0, 0.95, 0, 0.7, 0.5, 0.45, '#b08a5a'); pumpkin(m, -1.0, 0.95, 0.45, 0.22, 2);
+      if (big) { // banner on two posts: orange board with white bands ("Kürbismarkt")
+        [-1.6, 1.6].forEach((x) => m.cbox(x, -0.9, 0, 0.1, 0.1, 2.3, '#6b4a2e'));
+        m.cbox(0, -0.9, 1.6, 3.4, 0.06, 0.6, '#e8812a');
+        m.cbox(0, -0.86, 1.82, 2.6, 0.04, 0.16, '#fff6dc', { noOutline: true });
+      }
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  M.pumpkinPile = function (variant) {
+    const key = 'ppile' + variant;
+    if (!treeCache[key]) {
+      const m = I.model(), r = NB.seeded(variant * 7 + 3);
+      m.shadow(-0.7, -0.6, 1.4, 1.2, 0.5);
+      const n = 4 + ((variant % 3) * 2);
+      for (let i = 0; i < n; i++) pumpkin(m, (r() - 0.5) * 1.3, (r() - 0.5) * 1.1, 0, 0.2 + r() * 0.16, i + variant);
+      if (n > 5) pumpkin(m, 0, 0, 0.4, 0.26, variant + 1);
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+
+  // ---------- deer (drawn facing right): hinds, a stag with antlers, a spotted calf ----------
+  const DEER = {
+    stand: ['...........bbbb.', '...........bebbn', '..........bbbb..', '.wbbbbbbbbbb....', 'wwbbbbbbbbbbb...', '.wbbllllllbbb...', '..bbllllllbb....', '..b..b....b..b..', '..b..b....b..b..', '..b..b....b..b..'],
+    walk2: ['...........bbbb.', '...........bebbn', '..........bbbb..', '.wbbbbbbbbbb....', 'wwbbbbbbbbbbb...', '.wbbllllllbbb...', '..bbllllllbb....', '.b....b..b....b.', '.b....b..b....b.', 'b.....b..b....b.'],
+    graze: ['................', '................', '................', '.wbbbbbbbbbbb...', 'wwbbbbbbbbbbbb..', '.wbbllllllbbbb..', '..bbllllllbbbbb.', '..b..b....b.bbbn', '..b..b....b..be.', '..b..b....b.....'],
+    lie: ['................', '................', '................', '...........bbbb.', '...........bebbn', '..........bbbb..', '.wbbbbbbbbbb....', 'wwbbbbbbbbbbb...', '.wbbllllllbbb...', '..bbbbbbbbbb....'],
+  };
+  const ANTLERS = ['..........a..a..', '..........aa.a..', '...........aaa..'];
+  M.deer = function (L) {
+    L = Object.assign({ kind: 'hind' }, L);
+    const stag = L.kind === 'stag', calf = L.kind === 'calf';
+    const colorOf = (ch, x, y) => {
+      if (ch === 'b') { if (calf && (x + y * 3) % 7 === 0 && y >= 3 && y <= 6) return '#f0e6d2'; return stag ? '#7a4a2e' : calf ? '#a8744a' : '#8a5a3a'; }
+      return { l: '#c9a37a', w: '#f4efe6', n: '#2a2222', e: '#1a1a1a', a: '#6b4a2e' }[ch];
+    };
+    const withAntlers = (rows, lying) => (stag ? (lying ? rows.slice(0, 3).map((r, i) => ANTLERS[i]).concat(rows.slice(3)) : ANTLERS.concat(rows)) : rows);
+    const mk = (rows, o) => { const right = I.rows(rows, colorOf, o); return { right, left: flipRec(right) }; };
+    const o = { shadowW: 13, shadowH: 1.8 };
+    return { walk: [mk(withAntlers(DEER.stand), o), mk(withAntlers(DEER.walk2), o)], stand: mk(withAntlers(DEER.stand), o), graze: mk(withAntlers(DEER.graze, true), o), lie: mk(withAntlers(DEER.lie, true), { shadowW: 13, shadowH: 1.5 }) };
   };
 
   // mirror a finished sprite record horizontally

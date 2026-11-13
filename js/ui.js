@@ -129,6 +129,8 @@
       ctx.fillStyle = 'rgba(200,230,255,0.9)';
       for (let k = 0; k < 3; k++) { const t = ((now * 1.7 + k / 3 + e.x) % 1), ix = (1 - t) * (1 - t) * a0[0] + 2 * (1 - t) * t * mx + t * t * a1[0], iy = (1 - t) * (1 - t) * a0[1] + 2 * (1 - t) * t * my + t * t * a1[1]; ctx.beginPath(); ctx.arc(ix, iy + Math.sin(k * 2.1 + now * 5) * 2, Math.max(1, v.zoom * 0.7), 0, Math.PI * 2); ctx.fill(); }
     }
+    // the crew leader keeps a name tag while fighting the fire (so you can spot Raphy)
+    for (const e of NB.Entities.list) if (e.kind === 'firefighter' && e.d && e.d.lead && e.state !== 'back' && !U.bubbles.some((b) => b.owner === e)) { const t = e.top(), p = toScreen(t.x, t.y, t.z); tag(ctx, '🚒 ' + e.name, p[0], p[1]); }
     // hover name
     const h = U.hover;
     if (h && !U.bubbles.some((b) => b.owner === h.owner)) {

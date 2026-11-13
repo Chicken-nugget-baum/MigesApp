@@ -286,6 +286,52 @@ const MILCH_EGID = '559171'; // Kapellenweg 1 (Gehrig)
 const milch = blds.find((b) => b.egid === MILCH_EGID);
 if (milch) Object.assign(milch, { id: 'milch', kind: 'dairy', name: 'Milchzentrale' });
 
+// ---------------- main road east: "Bremgarterstrasse" (OSM calls this stretch Landstrasse) to the roundabout ----------------
+// From the Niederwilerstrasse junction along the Landstrasse to the roundabout (OSM 37379186), the roundabout itself
+// and a stub of the Bremgarterstrasse beyond. The map grows to include them. Also the petrol station (OSM amenity=fuel).
+let racer = null, fuel = null, kreisel = null;
+{
+  const wayPts = (id) => { const w = ways.find((x) => x.id === id); return w ? w.geometry.map(toL) : []; };
+  const chain = (ids, start) => {
+    const pts = []; let cur = start;
+    for (const id of ids) {
+      let p = wayPts(id); if (!p.length) continue;
+      if (Math.hypot(p[p.length - 1][0] - cur[0], p[p.length - 1][1] - cur[1]) < Math.hypot(p[0][0] - cur[0], p[0][1] - cur[1])) p = p.slice().reverse();
+      pts.push(...(pts.length ? p.slice(1) : p)); cur = pts[pts.length - 1];
+    }
+    return pts;
+  };
+  const mainPts = chain([781771250, 990154109, 11846299], [229, -167]);
+  const ring = openRing(wayPts(37379186));
+  const bremPts = wayPts(24331930).slice(0, 4);
+  if (mainPts.length > 2 && ring.length > 4) {
+    const all = mainPts.concat(ring, bremPts);
+    bounds[2] = Math.max(bounds[2], Math.round(Math.max(...all.map((p) => p[0])) + 40));
+    bounds[3] = Math.max(bounds[3], Math.round(Math.max(...all.map((p) => p[1])) + 40));
+    streets.push({ name: 'Bremgarterstrasse', kind: 'main', width: 7.2, pts: mainPts });
+    streets.push({ name: 'Kreisel', kind: 'main', width: 6.5, pts: ring.concat([ring[0]]) });
+    if (bremPts.length > 1) streets.push({ name: 'Bremgarterstrasse', kind: 'main', width: 7.2, pts: bremPts });
+    kreisel = centroid(ring).map((v) => +v.toFixed(1));
+    // the racer's route: main road, round the roundabout (OSM ring order = direction of travel), out on the Bremgarterstrasse
+    const nearest = (pts, p) => pts.reduce((bi, q, i) => (Math.hypot(q[0] - p[0], q[1] - p[1]) < Math.hypot(pts[bi][0] - p[0], pts[bi][1] - p[1]) ? i : bi), 0);
+    const end = mainPts[mainPts.length - 1], i0 = nearest(ring, end), i1 = bremPts.length ? nearest(ring, bremPts[0]) : (i0 + ring.length - 1) % ring.length;
+    const arc = [];
+    for (let i = i0, k = 0; k <= ring.length; i = (i + 1) % ring.length, k++) { arc.push(ring[i]); if (i === i1 && k > 0) break; }
+    racer = mainPts.concat(arc, bremPts.slice(1));
+    // petrol station beside the road: 13 m off the centre line on its real side, facing the road
+    const fuelNode = raw.elements.find((e) => e.type === 'node' && e.tags && e.tags.amenity === 'fuel');
+    if (fuelNode) {
+      const p = fromWgs(fuelNode.lat, fuelNode.lon);
+      let best = { d: Infinity };
+      for (let i = 1; i < mainPts.length; i++) { const [d, q] = distSeg(p, mainPts[i - 1], mainPts[i]); if (d < best.d) best = { d, q, a: mainPts[i - 1], b: mainPts[i] }; }
+      const dx = best.b[0] - best.a[0], dz = best.b[1] - best.a[1], l = Math.hypot(dx, dz) || 1;
+      const side = (p[0] - best.q[0]) * (-dz / l) + (p[1] - best.q[1]) * (dx / l) >= 0 ? 1 : -1;
+      const nx = (-dz / l) * side, nz = (dx / l) * side;
+      fuel = { name: fuelNode.tags.name || 'Tankstelle', x: +(best.q[0] + nx * 13).toFixed(1), z: +(best.q[1] + nz * 13).toFixed(1), heading: +Math.atan2(dx / l, dz / l).toFixed(3), road: [+best.q[0].toFixed(1), +best.q[1].toFixed(1)], n: [+nx.toFixed(3), +nz.toFixed(3)] };
+    }
+  }
+}
+
 // ---------------- fields (OSM landuse: farmland / meadow / orchard around the village) ----------------
 // Kept when they overlap the painted ground (bounds + margin). Crop kinds rotate per field (grain, meadow, root
 // crops) so the landscape has variety; `angle` is the long axis of the field (furrow / tractor direction).
@@ -329,6 +375,8 @@ const pois = {
 if (feld) pois.feld = fieldRect(feld);
 if (weide) pois.weide = fieldRect(weide);
 if (milch) pois.milchzentrale = around(milch.entry, 6);
+if (fuel) pois.tankstelle = around([fuel.x, fuel.z], 7);
+if (kreisel) pois.kreisel = around(kreisel, 14);
 for (const w of water) { // the pond with its shore, and the fishing spot on the shore nearest the village
   const xs = w.pts.map((p) => p[0]), zs = w.pts.map((p) => p[1]);
   pois.weiher = [Math.min(...xs) - 8, Math.min(...zs) - 8, Math.max(...xs) + 8, Math.max(...zs) + 8].map((v) => +v.toFixed(1));
@@ -339,10 +387,11 @@ for (const w of water) { // the pond with its shore, and the fishing spot on the
   pois.fischerplatz = around(w.fishing, 3);
 }
 const labels = STREET_NAMES.map((name) => ({ text: name, at: midOf(name) }));
+if (racer) labels.push({ text: 'Bremgarterstrasse', at: racer[Math.floor(racer.length / 3)] });
 
 const scene = {
   source: 'OpenStreetMap contributors (ODbL); Amtliche Vermessung Kanton Aargau; GWR (BFS); SWISSIMAGE (swisstopo)',
-  origin: ORIGIN, bounds, streets, buildings: blds, surfaces, fields, water, stops, route, pois, labels, start: mittel ? mittel.at : [0, 0],
+  origin: ORIGIN, bounds, streets, buildings: blds, surfaces, fields, water, stops, route, racer, fuel, kreisel, pois, labels, start: mittel ? mittel.at : [0, 0],
 };
 writeFileSync('js/data/scene.js', '// Generated by scripts/build-scene.mjs (OpenStreetMap, Amtliche Vermessung AG, GWR, SWISSIMAGE). Do not edit by hand.\n' +
   'window.NB = window.NB || {};\nNB.Scene = ' + JSON.stringify(scene) + ';\n');

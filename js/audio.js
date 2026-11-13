@@ -29,6 +29,7 @@
     siren2: [0.5, 0, 465, 0.02, 0.45, 0.08, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 2400],
     spray: [0.25, 0.1, 3000, 0.02, 0.25, 0.15, 4, 1, 0, 0, 0, 0, 0, 1.5, 0, 0, 0, 0.6, 0.05],
     bark: [0.7, 0.1, 190, 0.01, 0.07, 0.12, 2, 1.6, -7, 0, 0, 0, 0, 0.3, 0, 0, 0, 0.8, 0.02, 0, 900],
+    snort: [0.45, 0.1, 120, 0.01, 0.08, 0.1, 4, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0.7, 0.02, 0, 700],
   };
 
   // volume/pan from a world position relative to the camera
@@ -46,9 +47,9 @@
     meow: ['meow1', 'meow2', 'meow3'], mrr: ['mrr'], quack: ['quack1', 'quack2', 'quack3'],
     honk: ['horn_car', 'horn_car2'], honkMini: ['horn_mini'], honkTractor: ['horn_tractor'], honkTruck: ['horn_truck'],
     knock: ['knock'], door: ['door'], cardoor: ['cardoor'], splash: ['splash1', 'splash2'], chirp: ['bird1', 'bird2', 'bird3', 'bird4'],
-    clink: ['clink1', 'clink2'], purr: ['purr'], tractor: ['tractor'], crickets: ['crickets'], fire: ['fire'], bark: ['bark1', 'bark2'],
+    clink: ['clink1', 'clink2'], purr: ['purr'], tractor: ['tractor'], crickets: ['crickets'], fire: ['fire'], bark: ['bark1', 'bark2'], racer: ['racer'],
   };
-  const FALLBACK = { honkMini: 'honk', honkTractor: 'honk', honkTruck: 'honk', knock: 'door', cardoor: 'door', crickets: 'cricket' };
+  const FALLBACK = { honkMini: 'honk', honkTractor: 'honk', honkTruck: 'honk', knock: 'door', cardoor: 'door', crickets: 'cricket', racer: 'engine' };
   const buffers = {};
   let samplesLoading = false;
   A.loadSamples = function () {

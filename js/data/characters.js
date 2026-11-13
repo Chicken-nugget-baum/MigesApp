@@ -30,6 +30,10 @@ NB.Data.outings = [
       { members: ['andre', 'monika'], go: ['08:40', '10:00'], away: [40, 75], chance: 0.6,
         leave: { monika: 'André, mir fahred zum Gisler! 🌸', andre: 'Scho wider zum Gisler? Jo guet…' },
         back: { monika: 'Lueg, nomol zwei Hortensie vom Gisler! 🌸', andre: 'Mir händ jetzt meh Hortensie als Rase.' } },
+      { members: ['andre'], go: ['10:45', '12:20'], away: [8, 14], chance: 0.9, dest: 'fuel', stay: 70,
+        leave: { andre: 'De Jeep bruucht Diesel. Uf zur Gratank!' },
+        at: { andre: 'Volltanke, bitte. Diesel. Und de Luftdruck prüefe.' },
+        back: { andre: 'Vollgtankt. 1963er Jeep, 2026er Dieselpriis…' } },
       { members: ['andre'], go: ['13:40', '16:00'], away: [25, 55], chance: 0.85, cruise: true,
         leave: { andre: 'Ich mach no e Rundi mit em Jeep. 🚙' },
         back: { andre: 'So. Rundi gmacht – de Jeep lauft wie es Ührli.' } },
@@ -38,7 +42,7 @@ NB.Data.outings = [
 ];
 NB.Data.firebrigade = { name: 'Füürwehr Niederwil', lines: ['Tatü-tata! Platz do!', 'Füürwehr Niederwil – scho wider Nesselnbach?', 'Wasser hämmer gnueg debii.'] };
 NB.Data.firefighters = [
-  { name: 'Raphy Naef', voice: 0.85, look: { skin: '#5a3a28', hair: '#1a1210', hairStyle: 'cap', cap: '#e8c23a', shirt: '#c0392b', pants: '#2a2a3a', bands: ['#f2e85a', '#c0392b'], shoes: '#1a1a1a' },
+  { name: 'Raphy Naef', lead: true, voice: 0.85, look: { skin: '#5a3a28', hair: '#1a1210', hairStyle: 'cap', cap: '#ffffff', shirt: '#c0392b', pants: '#2a2a3a', bands: ['#f2e85a', '#ffffff'], shoes: '#1a1a1a' }, // white helmet = crew leader
     lines: ['Wasser marsch!', 'Scho wider d\'Milchzentrale?!', 'Zrugg, Lüüt, das isch heiss!', 'Raphy do – mir händ\'s im Griff.'], clicks: ['Raphael Naef, Füürwehr Niederwil. Alles under Kontrolle!', 'Chasch mer en Kafi bringe, wenn\'s glöscht isch?', 'Zrugg bliibe, gäll!'] },
   { name: 'Füürwehrler Kurt', voice: 0.7, look: { skin: '#e8b890', hair: '#8a8a8a', hairStyle: 'cap', cap: '#e8c23a', shirt: '#c0392b', pants: '#2a2a3a', bands: ['#f2e85a', '#c0392b'], shoes: '#1a1a1a', beard: true },
     lines: ['Meh Druck uf de Schluuch!', 'Links bränt\'s no!', 'Ruhig bliibe, mir sind do.'] },
@@ -162,7 +166,7 @@ NB.Data.characters = [
   {
     id: 'iris', name: 'Iris', home: 'h31', cycle: true,
     look: { skin: '#f1c7a0', hair: '#a8763e', hairStyle: 'long', shirt: '#7b5ea7', pants: '#3a3f55', shoes: '#4a3a30' },
-    voice: 1.2, favorites: ['ifangweg', 'dorfplatz', 'kapelle', 'sitzplatz'],
+    voice: 1.2, favorites: ['ifangweg', 'dorfplatz', 'kuerbismarkt', 'kapelle', 'sitzplatz'],
     routine: [{ at: '07:30', go: 'ifangweg' }, { at: '09:00', go: 'dorfplatz' }, { at: '10:30', go: 'home:h31' }, { at: '12:00', go: 'home:h31' }, { at: '14:00', go: 'ifangweg' }, { at: '16:00', go: 'kapelle' }, { at: '17:30', go: 'home:h31' }, { at: '19:15', go: 'sitzplatz' }, { at: '21:30', go: 'home:h31' }],
     sleep: ['23:00', '06:45'],
     clicks: ['Joel! Hesch gnueg gässe?', 'Mariana, wotsch no en Kafi?', 'Yves, rum emol dis Zimmer uf!', 'Ihr sind mir Zwei!'],
@@ -251,6 +255,18 @@ NB.Data.characters = [
     random: ['De Tank isch voll.', 'Silvia, d\'Chunde!', 'Hoffentlich brönnt\'s nie meh.'],
     night: ['Guet Nacht, Chäserei.'],
   },
+  // De Hirschbuur: runs the Hirschfarm behind Niederwilerstrasse 21.1 (lives at Niederwilerstrasse 21): feeds the deer
+  // morning and evening, sells pumpkins at the stand by the street (the big Kürbismarkt in autumn).
+  {
+    id: 'hirschbuur', name: 'De Hirschbuur', home: 'h88',
+    look: { skin: '#e8b890', hair: '#7a5a3a', hairStyle: 'cap', cap: '#4a6a3a', shirt: '#6a8a5a', pants: '#4a4038', shoes: '#2a2a2a' },
+    voice: 0.75, favorites: ['verkauf', 'hirschgehege', 'fuettern', 'beiz'],
+    routine: [{ at: '06:30', go: 'fuettern' }, { at: '07:00', go: 'home:h88' }, { at: '09:00', go: 'verkauf' }, { at: '12:00', go: 'home:h88' }, { at: '13:30', go: 'verkauf' }, { at: '17:00', go: 'fuettern' }, { at: '17:45', go: 'home:h88' }, { at: '19:00', go: 'beiz' }, { at: '20:30', go: 'home:h88' }],
+    sleep: ['22:00', '06:00'],
+    clicks: ['Grüezi! Damhirsch, alles vo do hinde.', "D'Hirsch bruuched Rueh – bitte nid a Zuun klopfe.", 'Kürbis? Drü Franke s\'Kilo, Kasse vo Vertraue. 🎃', 'De Platzhirsch heisst eifach Platzhirsch.', 'Jetz mues i wider go füettere!'],
+    random: ['Im Herbscht isch Kürbismarkt. Riesechürbis, Hokkaido, alles.', "D'Hirschchälber sind im Juni cho.", 'Heu, Rüebli und es bitzli Chraftfuetter.', 'Wer wott Hirschpfäffer? Nei, Spass.'],
+    night: ['D\'Hirsch schlofed au. Guet Nacht.'],
+  },
   {
     id: 'wirtin', name: 'D\'Wirtin', home: 'beiz',
     look: { skin: '#f1c7a0', hair: '#a03a2a', hairStyle: 'bun', shirt: '#2f7a3c', dress: '#2f7a3c', apron: '#ffffff' },
@@ -273,7 +289,7 @@ NB.Data.characters = [
   {
     id: 'nochberi', name: 'D\'Nochberi', home: 'haus5',
     look: { skin: '#f1c7a0', hair: '#5a3a22', hairStyle: 'headscarf', scarf: '#d94a8a', shirt: '#8a6a4a', dress: '#8a6a4a' },
-    voice: 1.3, favorites: ['dorfplatz', 'quartier', 'kapelle'],
+    voice: 1.3, favorites: ['dorfplatz', 'kuerbismarkt', 'hirschgehege', 'kapelle'],
     routine: [{ at: '08:00', go: 'quartier' }, { at: '10:00', go: 'dorfplatz' }, { at: '12:00', go: 'home:haus5' }, { at: '15:00', go: 'dorfplatz' }, { at: '17:30', go: 'home:haus5' }],
     sleep: ['22:00', '06:30'],
     clicks: ['Hesch scho ghört?', 'Weisch, wer zügled?', 'Das hesch aber ned vo mir!', 'Ich säg nüt meh!'],
@@ -291,7 +307,7 @@ NB.Data.characters = [
   {
     id: 'chind', name: 'S\'Nochberschind', home: 'haus10',
     look: { skin: '#f1c7a0', hair: '#e0b030', hairStyle: 'short', shirt: '#e08a3c', pants: '#3a5f9a' },
-    voice: 1.7, favorites: ['gartebahn', 'dorfplatz', 'weide', 'kapelle'],
+    voice: 1.7, favorites: ['hirschgehege', 'dorfplatz', 'weide', 'kapelle'],
     routine: [{ at: '07:30', go: 'bushalt' }, { at: '08:00', go: 'niederwil' }, { at: '12:00', go: 'home:haus10' }, { at: '13:30', go: 'weide' }, { at: '15:30', go: 'gartebahn' }, { at: '18:00', go: 'home:haus10' }],
     sleep: ['20:00', '07:00'],
     clicks: ['Fangis! Du bisch!', 'Lueg, ich cha so schnäll renne!', 'Hesch e Chatz gseh?', 'Mami! Dä/die plaget mi!'],

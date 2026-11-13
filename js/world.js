@@ -193,9 +193,21 @@
   // (from the Gärtnerei Gisler) by the door and at the end of the court, a parking spot for André's jeep
   const koch = Object.values(map.buildings).find((b) => b.addr === 'Ifangweg 23');
   if (koch) {
-    const D = koch.door, n = koch.doorN, t = [-n[1], n[0]];
+    // the court goes on the side of the house that faces the fields (between house and farmland): pick the facade
+    // whose outward normal reaches a field soonest and is not blocked by buildings or the street
+    const kca = Math.cos(koch.angle), ksa = Math.sin(koch.angle);
+    let side = null;
+    for (const [nx, nz, half] of [[kca, ksa, koch.w / 2], [-kca, -ksa, koch.w / 2], [-ksa, kca, koch.d / 2], [ksa, -kca, koch.d / 2]]) {
+      let dist = 60;
+      for (let r = 3; r <= 50; r += 2) if (map.fieldAt(koch.cx + nx * (half + r), koch.cz + nz * (half + r))) { dist = r; break; }
+      const px = koch.cx + nx * (half + 7), pz = koch.cz + nz * (half + 7);
+      const blocked = map.inBuilding(px, pz, 1.5) || map.streetDist(px, pz) < 3 || map.pondDist(px, pz) < 8;
+      const score = dist + (blocked ? 100 : 0);
+      if (!side || score < side.score) side = { score, n: [nx, nz], half, dist };
+    }
+    const n = side.n, t = [-n[1], n[0]], D = [koch.cx + n[0] * side.half, koch.cz + n[1] * side.half]; // "door" = centre of that facade
     const at = (a, m) => ({ x: D[0] + t[0] * a + n[0] * m, z: D[1] + t[1] * a + n[1] * m });
-    const L = 12, WD = 3, A0 = 1, M0 = 6.2; // court: length along the facade, width, centre (a, m) in front of the door
+    const L = 12, WD = 3, A0 = 1, M0 = Math.max(4.4, Math.min(6.2, side.dist - WD / 2 - 0.6)); // court between facade and field edge
     const onCourt = (p, pad) => { const a = (p.x - D[0]) * t[0] + (p.z - D[1]) * t[1] - A0, m = (p.x - D[0]) * n[0] + (p.z - D[1]) * n[1] - M0; return Math.abs(a) < L / 2 + pad && Math.abs(m) < WD / 2 + pad; };
     const free = (p, r) => !map.inBuilding(p.x, p.z, r) && map.streetDist(p.x, p.z) > 1.5 && !onCourt(p, r);
     const C = at(A0, M0), throwPt = at(A0 - L / 2 + 1, M0);
@@ -232,6 +244,82 @@
         if (Math.hypot(c.x - p.x, c.z - p.z) < (p === bench ? 0.6 : 0.5)) { map.walkCost[cz * W + cx] = 0; map.animalCost[cz * W + cx] = 0; }
       }
     }
+  }
+  // petrol station (Gratank, Bremgarterstrasse): bay at the pumps for refuelling cars
+  map.fuel = S.fuel || null;
+  if (map.fuel) {
+    map.parkings = map.parkings || {};
+    const f = map.fuel, hx = Math.sin(f.heading), hz = Math.cos(f.heading); // along the road
+    map.parkings.fuel = { x: f.x - f.n[0] * 3.2 + hx * 0.5, z: f.z - f.n[1] * 3.2 + hz * 0.5, heading: f.heading }; // under the canopy, road side of the pumps
+    // the station footprint is not walkable
+    for (let cz = 0; cz < H; cz++) for (let cx = 0; cx < W; cx++) {
+      const c = map.cellCentre(cx, cz), dx = c.x - f.x, dz = c.z - f.z, a = dx * hx + dz * hz, m = dx * f.n[0] + dz * f.n[1];
+      if (Math.abs(a) < 7 && m > -4.5 && m < 10.5) { map.walkCost[cz * W + cx] = 0; map.animalCost[cz * W + cx] = 0; }
+    }
+  }
+  // Hirschfarm behind Niederwilerstrasse 21.1: fenced deer paddock on the side away from the street, with a gate,
+  // a feeding rack and a shelter; pumpkin stand (Kürbismarkt) by the street in front of the building
+  const hf = Object.values(map.buildings).find((b) => b.addr === 'Niederwilerstrasse 21.1');
+  if (hf) {
+    const n = [-hf.doorN[0], -hf.doorN[1]], t = [-n[1], n[0]]; // n = away from the street (the back of the building)
+    const half = Math.abs(n[0] * Math.cos(hf.angle) + n[1] * Math.sin(hf.angle)) * hf.w / 2 + Math.abs(-n[0] * Math.sin(hf.angle) + n[1] * Math.cos(hf.angle)) * hf.d / 2;
+    const B = [hf.cx + n[0] * half, hf.cz + n[1] * half]; // centre of the back wall
+    const at = (a, m) => ({ x: B[0] + t[0] * a + n[0] * m, z: B[1] + t[1] * a + n[1] * m });
+    let A = 15, M0 = 4, M1 = 27;
+    const cornersOk = () => [at(-A, M0), at(A, M0), at(A, M1), at(-A, M1)].every((c) => !map.inBuilding(c.x, c.z, 1) && map.streetDist(c.x, c.z) > 2 && c.x > bx0 + 4 && c.x < bx1 - 4 && c.z > bz0 + 4 && c.z < bz1 - 4);
+    for (let k = 0; k < 6 && !cornersOk(); k++) { A -= 2; M1 -= 2; }
+    const gate = at(-A + 4, M0), rack = at(2, M0 + 7), shelter = at(A - 5, M1 - 3.5), feed = at(-A + 4, M0 + 3);
+    const local = (x, z) => [(x - B[0]) * t[0] + (z - B[1]) * t[1], (x - B[0]) * n[0] + (z - B[1]) * n[1]];
+    const inside = (x, z, pad) => { const [a, m] = local(x, z); return Math.abs(a) < A - (pad || 0) && m > M0 + (pad || 0) && m < M1 - (pad || 0); };
+    const onFence = (x, z) => { const [a, m] = local(x, z); const nearA = Math.abs(Math.abs(a) - A) < 0.7 && m > M0 - 0.7 && m < M1 + 0.7, nearM = (Math.abs(m - M0) < 0.7 || Math.abs(m - M1) < 0.7) && Math.abs(a) < A + 0.7; return (nearA || nearM) && Math.hypot(x - gate.x, z - gate.z) > 1.6; };
+    map.deer = { B, t, n, A, M0, M1, at, local, inside, onFence, gate, rack, shelter, feed, name: 'Hirschfarm' };
+    map.deerCost = new Float32Array(N);
+    for (let cz = 0; cz < H; cz++) for (let cx = 0; cx < W; cx++) {
+      const c = map.cellCentre(cx, cz), i = cz * W + cx;
+      const inP = inside(c.x, c.z, 0.9), fence = onFence(c.x, c.z), blk = map.inBuilding(c.x, c.z, 0.4) || Math.hypot(c.x - rack.x, c.z - rack.z) < 1.2 || Math.hypot(c.x - shelter.x, c.z - shelter.z) < 1.6;
+      map.deerCost[i] = inP && !fence && !blk ? 1 : 0;
+      if (fence) { map.walkCost[i] = 0; map.animalCost[i] = 0; }
+      else if (inside(c.x, c.z, 0) && !(Math.hypot(c.x - feed.x, c.z - feed.z) < 2.6 || Math.hypot(c.x - gate.x, c.z - gate.z) < 2.6)) { map.walkCost[i] = 0; map.animalCost[i] = 0; } // people stay outside (except the feeding corner)
+    }
+    // pumpkin stand at the Niederwilerstrasse in front of the farm: on the verge 4.5 m off the road edge, on the
+    // buildings' side, where nothing hides it (towards the viewer), facing the road
+    let stand = null;
+    {
+      let q = null, qd = Infinity, qt = null; // nearest point on the Niederwilerstrasse to the farm building
+      for (const st of S.streets) { if (st.name !== 'Niederwilerstrasse') continue; for (let i = 1; i < st.pts.length; i++) {
+        const [ax, az] = st.pts[i - 1], [bxx, bzz] = st.pts[i], dx = bxx - ax, dz = bzz - az, l2 = dx * dx + dz * dz || 1;
+        const u = Math.max(0, Math.min(1, ((hf.cx - ax) * dx + (hf.cz - az) * dz) / l2)), px = ax + u * dx, pz = az + u * dz, d = Math.hypot(px - hf.cx, pz - hf.cz);
+        if (d < qd) { qd = d; q = [px, pz]; qt = [dx / Math.sqrt(l2), dz / Math.sqrt(l2)]; }
+      } }
+      if (q) {
+        const side = (hf.cx - q[0]) * -qt[1] + (hf.cz - q[1]) * qt[0] >= 0 ? 1 : -1, nx = -qt[1] * side, nz = qt[0] * side; // towards the buildings
+        let best = null;
+        for (const a of [0, 8, -8, 16, -16, 24, -24, 32]) {
+          const x = q[0] + qt[0] * a + nx * 7.5, z = q[1] + qt[1] * a + nz * 7.5;
+          if (map.inBuilding(x, z, 2.5) || map.streetDist(x, z) < 2 || map.fieldAt(x, z)) continue;
+          const score = (x + z) - Math.abs(a) * 0.3;
+          if (!best || score > best.score) best = { score, x, z };
+        }
+        if (best) stand = { x: best.x, z: best.z, heading: Math.atan2(-nx, -nz) };
+      }
+    }
+    map.deer.stand = stand;
+    map.spots = map.spots || {};
+    const vis = [];
+    for (let a = -A + 1.5; a <= A - 1.5; a += 4) { const p = at(a, M0 - 1.4); if (!map.inBuilding(p.x, p.z, 0.5)) vis.push({ x: p.x, z: p.z, face: Math.atan2(n[0], n[1]), sit: false }); }
+    map.spots.hirschgehege = vis;
+    map.spots.fuettern = [{ x: feed.x, z: feed.z, face: Math.atan2(rack.x - feed.x, rack.z - feed.z), sit: false }];
+    if (stand) {
+      const fx = Math.sin(stand.heading), fz = Math.cos(stand.heading);
+      map.spots.verkauf = [{ x: stand.x - fx * 1.3, z: stand.z - fz * 1.3, face: stand.heading, sit: false }];
+      map.spots.kuerbismarkt = [-1.6, 0, 1.6].map((k) => ({ x: stand.x + fx * 1.6 - fz * k, z: stand.z + fz * 1.6 + fx * k, face: Math.atan2(-fx, -fz), sit: false }));
+      for (let cz = 0; cz < H; cz++) for (let cx = 0; cx < W; cx++) { const c = map.cellCentre(cx, cz); if (Math.hypot(c.x - stand.x, c.z - stand.z) < 1.2) { map.walkCost[cz * W + cx] = 0; } }
+      map.pois.kuerbismarkt = [stand.x - 4, stand.z - 4, stand.x + 4, stand.z + 4];
+      map.pois.verkauf = [stand.x - 2, stand.z - 2, stand.x + 2, stand.z + 2];
+    }
+    map.pois.hirschgehege = [Math.min(...vis.map((v) => v.x)) - 1, Math.min(...vis.map((v) => v.z)) - 1, Math.max(...vis.map((v) => v.x)) + 1, Math.max(...vis.map((v) => v.z)) + 1];
+    map.pois.fuettern = [feed.x - 1.5, feed.z - 1.5, feed.x + 1.5, feed.z + 1.5];
+    map.pois.hirschfarm = map.pois.hirschgehege;
   }
   // POIs from older data that don't exist in this small scene
   const ALIAS = { casino: 'beiz', niederwil: 'niederwilerstrasse', reuss: 'kapellenweg', wald: 'kapellenweg', gnadenthal: 'kapellenweg', gartebahn: 'ifangweg', feld: 'kapellenweg', weide: 'kapellenweg', schuel: 'niederwilerstrasse' };

@@ -27,3 +27,4 @@ synthesized on purpose.
 | `crickets.mp3` | summer nights (loop) | 0425 Nocturnal insect #2 |
 | `fire.mp3` | Milchzentrale fire (loop) | 3322 Fire, Foley |
 | `bark1-2.mp3` | dogs | 2955 Barking dog #3, 2352 Old dog barking #1 |
+| `racer.mp3` | the evening racer on the Bremgarterstrasse | 0600 Acceleration Aston Martin |

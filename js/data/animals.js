@@ -16,6 +16,13 @@ NB.Data.animals = [
   // with her in the Mini. Morgan lost his front left leg. Luna and Mina (`dogs: true`) like to ride on their backs.
   { kind: 'dog', name: 'Manolo', owner: 'mariana', side: -1, voice: 0.85, look: {}, clicks: ['Wuff!', 'Wuff wuff!', 'Hecheln… 🐾', '¡Guau!'] },
   { kind: 'dog', name: 'Morgan', owner: 'mariana', side: 1, voice: 1.0, look: { missing: 'frontLeft' }, clicks: ['Wuff!', 'Drü Bei, null Problem. Wuff!', '¡Guau guau!', 'Hopp hopp hopp!'] },
+  // Fallow deer on the Hirschfarm behind Niederwilerstrasse 21.1 (paddock = map.deer). kind: stag | hind | calf
+  { kind: 'deer', name: 'De Platzhirsch', look: { kind: 'stag' } },
+  { kind: 'deer', name: 'Hirschkue Bella', look: { kind: 'hind' } },
+  { kind: 'deer', name: 'Hirschkue Flora', look: { kind: 'hind' } },
+  { kind: 'deer', name: 'Hirschkue Nora', look: { kind: 'hind' } },
+  { kind: 'deer', name: 'Hirschchalb Fritzli', look: { kind: 'calf' } },
+  { kind: 'deer', name: 'Hirschchalb Lisi', look: { kind: 'calf' } },
   // Ducks on the Löli-Weiher (area = pond + shore). sex: 'm' = green-headed drake, 'f' = brown duck.
   { kind: 'duck', name: 'Erpel Edi', area: 'weiher', look: { sex: 'm' }, voice: 0.9 },
   { kind: 'duck', name: 'Ente Emma', area: 'weiher', look: { sex: 'f' }, voice: 1.1 },

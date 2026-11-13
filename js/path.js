@@ -38,9 +38,10 @@
     const t = ty * w + tx, s = sy * w + sx;
     if (tx < 0 || ty < 0 || tx >= w || ty >= h || !cost[t]) return null;
     const N = w * h;
-    const g = new Float32Array(N).fill(Infinity);
-    const came = new Int32Array(N).fill(-1);
-    const closed = new Uint8Array(N);
+    // scratch arrays are reused between calls (a search allocates nothing but the heap)
+    if (!NB._pathBuf || NB._pathBuf.N !== N) NB._pathBuf = { N, g: new Float32Array(N), came: new Int32Array(N), closed: new Uint8Array(N) };
+    const { g, came, closed } = NB._pathBuf;
+    g.fill(Infinity); came.fill(-1); closed.fill(0);
     const heap = new Heap();
     g[s] = 0;
     heap.push(Math.abs(sx - tx) + Math.abs(sy - ty), s);

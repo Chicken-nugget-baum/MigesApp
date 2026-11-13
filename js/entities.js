@@ -164,7 +164,7 @@
       const [tx, tz] = spot;
       this.evading = { v, x: tx, z: tz, t: 0 };
       this.pause = 0; this.moving = true;
-      if (Math.random() < 0.45) say(this, v.type === 'bus' ? NB.pick(["S'Postauto!", 'Ui, de Bus!']) : v.type === 'tractor' ? NB.pick(['De Buur mit em Traktor!', 'Tuck-tuck-tuck!', 'Hoi Buur!']) : NB.pick(['Achtung, es Auto!', "Hopp, uf d'Siite!", 'Ui!', 'Langsam!']), { quiet: true });
+      if (Math.random() < 0.45) say(this, v.type === 'bus' ? NB.pick(["S'Postauto!", 'Ui, de Bus!']) : v.type === 'tractor' ? NB.pick(['De Buur mit em Traktor!', 'Tuck-tuck-tuck!', 'Hoi Buur!']) : v.type === 'racer' ? NB.pick(['RASER!', 'Wäg do, de spinnt!', 'Ui ui ui!']) : NB.pick(['Achtung, es Auto!', "Hopp, uf d'Siite!", 'Ui!', 'Langsam!']), { quiet: true });
     }
     updateEvade(dt) {
       const e = this.evading; e.t += dt;
@@ -217,6 +217,10 @@
           this.updateBoule(dt);
         } else if (this.act === 'garden' && map.kochProps) {
           this.updateGarden(dt);
+        } else if (g.place === 'fire' && this.spot) { // watching the fire: stand, face it, comment
+          this.moving = false; this.heading = this.spot.face;
+          this.chatCd -= dt;
+          if (this.chatCd <= 0) { this.chatCd = NB.rr(12, 30); const l = NB.pick(this.c.fireLines || ["Oh nei, d'Milchzentrale!", 'Hoffentli isch niemer dinne!', 'Lueg, de Rauch!', "D'Füürwehr vo Niederwil chunnt!", 'Scho wider…', 'Zum Glück sind d\'Gehrigs dusse.']); say(this, l, { quiet: true }); if (NB.UI.onScreen(this)) NB.Audio.babble(l, this.c.voice, { pos: this, vol: 0.5 }); }
         } else {
           if (this.spot && this.spot.sit && !this.seated && Math.hypot(this.x - this.spot.x, this.z - this.spot.z) < 1.2) { this.seated = true; this.heading = this.spot.face; this.wait = NB.rr(60, 180); }
           this.wait -= dt;
@@ -598,6 +602,58 @@
     top() { return { x: this.x, y: 1.1, z: this.z }; }
   }
 
+  // ---------------------------------------------------------------- deer in the paddock of the Hirschfarm
+  class Deer extends Mover {
+    constructor(a) {
+      super(0, 0, map.deerCost, 1.1);
+      this.a = a; this.kind = 'deer'; this.name = a.name; this.frames = NB.Models.deer(a.look || {}); this.sprite = new PIXI.Sprite();
+      this.dir = Math.random() < 0.5 ? 'left' : 'right'; this.state = 'graze'; this.timer = NB.rr(2, 8); this.alarm = 0; this.hopT = 0;
+      const s = map.randomIn([map.deer.B[0] - 40, map.deer.B[1] - 40, map.deer.B[0] + 40, map.deer.B[1] + 40], this.cost) || map.deer.rack;
+      this.x = s.x; this.z = s.z; this.heading = Math.random() * 6.28;
+    }
+    // run to the spot farthest from `from` inside the paddock
+    flee(from) {
+      let best = null;
+      for (let k = 0; k < 12; k++) { const t = map.randomIn([map.deer.B[0] - 40, map.deer.B[1] - 40, map.deer.B[0] + 40, map.deer.B[1] + 40], this.cost); if (t) { const d = Math.hypot(t.x - from.x, t.z - from.z); if (!best || d > best.d) best = { t, d }; } }
+      if (best && this.goTo(best.t.x, best.t.z)) { this.state = 'walk'; this.alarm = NB.rr(3, 6); this.hopT = 0.35; this.anim += 1; }
+    }
+    update(dt) {
+      if (this.hopT > 0) this.hopT -= dt;
+      if (this.alarm > 0) this.alarm -= dt;
+      this.speed = this.alarm > 0 ? 4.5 : 1.1;
+      // dogs and people right at the fence make them nervous
+      if (this.alarm <= 0 && Math.random() < dt * 0.5) {
+        const near = E.list.find((o) => (o.kind === 'dog' && !o.away || o.kind === 'villager' && !o.inside && !o.away && o.moving) && Math.hypot(o.x - this.x, o.z - this.z) < (o.kind === 'dog' ? 9 : 4));
+        if (near) this.flee(near);
+      }
+      if (this.state === 'walk') { if (this.stepPath(dt)) { this.state = this.alarm > 0 ? 'stand' : 'graze'; this.timer = NB.rr(3, 10); } return this.pose(dt); }
+      this.timer -= dt; this.moving = false;
+      if (this.timer <= 0) {
+        const r = Math.random(), night = NB.Env.darkness > 0.5;
+        if (night && r < 0.7) { this.state = 'lie'; this.timer = NB.rr(30, 90); }
+        else if (r < 0.45) { const t = map.randomIn([this.x - 12, this.z - 12, this.x + 12, this.z + 12], this.cost); if (t && Math.hypot(t.x - this.x, t.z - this.z) > 2 && this.goTo(t.x, t.z)) this.state = 'walk'; else { this.state = 'graze'; this.timer = NB.rr(4, 12); } }
+        else if (r < 0.8) { this.state = 'graze'; this.timer = NB.rr(5, 16); }
+        else { this.state = 'stand'; this.timer = NB.rr(3, 8); }
+      }
+      this.pose(dt);
+    }
+    pose(dt) {
+      if (this.moving) { const f = I.facing(this.heading); if (f === 'e' || f === 'se' || f === 'ne') this.dir = 'right'; else if (f === 'w' || f === 'sw' || f === 'nw') this.dir = 'left'; }
+      const F = this.frames;
+      const set = this.moving ? F.walk[Math.floor(this.anim * (this.alarm > 0 ? 10 : 5)) % 2] : this.state === 'graze' ? F.graze : this.state === 'lie' ? F.lie : F.stand;
+      const hop = this.hopT > 0 ? Math.sin((this.hopT / 0.35) * Math.PI) * 0.5 : 0;
+      place(this, set[this.dir], this.x, hop, this.z);
+    }
+    click() {
+      say(this, NB.pick(['…!', '*schnuuft*', '…', 'Fiep!']), { life: 1.5 });
+      NB.Audio.play('snort', { pos: this, rate: this.a.look && this.a.look.kind === 'stag' ? 0.8 : 1.1 });
+      this.flee(this);
+      for (const o of E.list) if (o !== this && o.kind === 'deer' && Math.hypot(o.x - this.x, o.z - this.z) < 10 && o.alarm <= 0) o.flee(this);
+    }
+    get visible() { return true; }
+    top() { return { x: this.x, y: 1.5, z: this.z }; }
+  }
+
   // ---------------------------------------------------------------- ducks on the Löli-Weiher
   class Duck extends Mover {
     constructor(a) {
@@ -682,7 +738,7 @@
       this.pts = laneOffset(base, 1.5);
       this.x = this.pts[0].x; this.z = this.pts[0].z; this.i = 1; this.heading = 0; this.life = 0;
       this.color = opts.color || NB.pick(type === 'tractor' ? TRACTOR_COLORS : CAR_COLORS); this.sprite = new PIXI.Sprite(); this.shown = null;
-      this.maxSpeed = type === 'bus' ? 7 : type === 'tractor' ? 4 : type === 'mini' ? 7 : type === 'tanker' ? 6 : type === 'firetruck' ? 15 : type === 'jeep' ? 6.5 : NB.rr(8, 10);
+      this.maxSpeed = type === 'bus' ? 7 : type === 'tractor' ? 4 : type === 'mini' ? 7 : type === 'tanker' ? 6 : type === 'firetruck' ? 15 : type === 'jeep' ? 6.5 : type === 'racer' ? 31 : NB.rr(8, 10);
       this.speed = this.maxSpeed; this.stopT = 0; this.done = false; this.putT = 0; this.pull = 0;
       this.name = opts.name || (type === 'bus' ? 'Postauto' : type === 'tractor' ? 'Traktor' : 'Auto');
       this.lines = opts.lines || null;
@@ -704,6 +760,11 @@
     departAlong(pts) {
       this.pts = [{ x: this.x, z: this.z }].concat(pts); this.i = 1;
       this.parked = false; this.departing = true; this.life = 5; this.speed = 0;
+    }
+    // drive a path and park at its end (e.g. to the petrol station and back)
+    driveTo(pts, parkAt) {
+      this.pts = [{ x: this.x, z: this.z }].concat(pts); this.i = 1;
+      this.parkAt = parkAt; this.parked = false; this.departing = false; this.life = 5; this.speed = 0;
     }
     // from the parking spot back onto the road and out of the village
     depart(reverse) {
@@ -727,6 +788,13 @@
       if (d > 0.01) this.heading = Math.atan2(dx, dz);
       let target = this.maxSpeed;
       if (this.parkAt && (this.i >= this.pts.length - 1 || (this.departing && this.i <= 1))) target = Math.min(target, 3); // crawl into / out of the yard
+      if (this.type === 'racer') { // full throttle, then hard on the brakes for the roundabout (the last stretch of the path)
+        const left = this.pts.length - this.i;
+        if (left <= (this.brakeAt || 8)) target = Math.min(target, 7);
+        this.roarT = (this.roarT || 0) - dt;
+        if (this.roarT <= 0) { this.roarT = 6.4; NB.Audio.play('racer', { pos: this, vol: 0.9, rate: this.speed > 20 ? 1.1 : 0.95 }); }
+        if (this.speed < 12 && this.blockedT > 2 && left > (this.brakeAt || 8)) target = Math.max(target, 6); // never fully stuck behind someone
+      }
       if (p.slow) target = Math.min(target, 3.2); // driveway
       // people on the street ahead jump aside, cats scurry off
       for (const o of E.list) {
@@ -737,7 +805,8 @@
         }
         if (o.kind !== 'villager' || o.inside || o.away || o.evading) continue;
         const ox = o.x - this.x, oz = o.z - this.z, ahead = (ox * dx + oz * dz) / (d || 1), side = Math.abs(ox * dz - oz * dx) / (d || 1);
-        if (ahead > 0 && ahead < (this.type === 'firetruck' ? 45 : 26) && side < 5 && map.streetDist(o.x, o.z) < 1.2) o.evade(this);
+        if (ahead > 0 && ahead < (this.type === 'firetruck' ? 45 : this.type === 'racer' ? 70 : 26) && side < 5 && map.streetDist(o.x, o.z) < 1.2) o.evade(this);
+        if (this.type === 'racer' && this.speed > 18 && Math.abs(ahead) < 20 && side < 14 && Math.random() < dt * 0.6 && !o.raserT) { o.raserT = performance.now(); say(o, NB.pick(['Raser!', 'Langsamer, du Löli!', "Jede Abig s'gliiche!", 'Das git no es Unglück!', 'Nummere ufschriibe!']), { quiet: true }); }
       }
       // blocked for a while (someone standing in the way): creep on regardless; the fire engine has right of way
       this.blockedT = this.speed < 0.3 ? (this.blockedT || 0) + dt : 0;
@@ -751,7 +820,7 @@
         else if (o.evading || o.state === 'flee') { if (side < 1.4) target = Math.min(target, 3 + ahead * 0.5); } // already getting out of the way: just slow down
         else target = Math.min(target, Math.max(0, (ahead - 3.5) * 1.5));
       } else target = Math.min(target, 2);
-      this.speed += NB.clamp(target - this.speed, -12 * dt, (this.type === 'firetruck' ? 8 : 4) * dt);
+      this.speed += NB.clamp(target - this.speed, -(this.type === 'racer' ? 18 : 12) * dt, (this.type === 'firetruck' ? 8 : this.type === 'racer' ? 11 : 4) * dt);
       const step = this.speed * dt;
       if (d <= step) { this.x = p.x; this.z = p.z; if (this.stops.includes(this.i)) { this.stopT = 6; this.speed = 0; } this.i++; }
       else { this.x += (dx / d) * step; this.z += (dz / d) * step; }
@@ -771,6 +840,7 @@
       if (this.lines) { say(this, NB.pick(this.lines)); NB.Audio.play(this.type === 'mini' ? 'honkMini' : 'honkTruck', { pos: this, rate: this.type === 'mini' ? 1.35 : 1, vol: 0.7 }); }
       else if (this.type === 'bus') { say(this, NB.pick(['Tü-ta-to! 🎺', 'Nöchsti Halt: Nesselnbach, Mitteldorf.', 'Bitte iistiige!'])); NB.Audio.horn({ pos: this }); }
       else if (this.type === 'tractor') { say(this, NB.pick(TRACTOR_LINES[NB.season] || TRACTOR_LINES.summer)); NB.Audio.play('honkTractor', { pos: this, rate: 0.7 }); }
+      else if (this.type === 'racer') { say(this, NB.pick(['BRRRRAAAP!', 'Us em Wäg, ich ha Vollgas!', 'Bis zum Kreisel und zrugg. Jede Abig.', 'Mini Mueter weiss nüt dervo.'])); NB.Audio.play('racer', { pos: this, vol: 0.8, rate: 1.2 }); }
       else { say(this, NB.pick(['Tüüt tüüt!', 'Ich ha\'s pressant!', 'Langsam dur s\'Dorf, gäll!'])); NB.Audio.play('honk', { pos: this }); }
     }
     get visible() { return true; }
@@ -862,7 +932,7 @@
         if (!F || F.intensity <= 0) { this.state = 'back'; this.spray = null; this.goTo(this.truck.x, this.truck.z); }
         else if (Math.random() < dt * 0.4) this.spray = { x: F.b.cx + NB.rr(-3, 3), y: F.b.top.y * NB.rr(0.3, 0.8), z: F.b.cz + NB.rr(-3, 3) };
         this.lineT -= dt;
-        if (this.lineT <= 0) { this.lineT = NB.rr(8, 16); const l = NB.pick(this.d.lines || ['Wasser marsch!']); say(this, l, { quiet: true }); if (NB.UI.onScreen(this)) NB.Audio.babble(l, this.d.voice || 0.9, { pos: this, vol: 0.6 }); }
+        if (this.lineT <= 0) { this.lineT = this.d.lead ? NB.rr(6, 11) : NB.rr(10, 18); const l = NB.pick(this.d.lines || ['Wasser marsch!']); say(this, l, { quiet: true }); if (NB.UI.onScreen(this)) NB.Audio.babble(l, this.d.voice || 0.9, { pos: this, vol: 0.6 }); }
       } else if (this.state === 'back') { if (this.stepPath(dt) || Math.hypot(this.x - this.truck.x, this.z - this.truck.z) < 3) { this.done = true; NB.world.remove(this.sprite); NB.Audio.play('door', { pos: this, vol: 0.4 }); return; } }
       this.pose(dt);
     }
@@ -900,9 +970,24 @@
   E.startFire = function (b) {
     if (E.fire || !map.parkings || !map.parkings.dairy) return false;
     const F = (E.fire = { b, t: 0, intensity: 1, phase: 'burning', truck: null, crew: [], sirenT: 0, fxT: 0 });
-    // residents out of the house, to the village square
-    for (const v of [...b.inside]) { v.leave(); v.fled = { until: performance.now() / 1000 + 400, place: 'dorfplatz' }; v.goalKey = null; v.path = null; v.pause = 0.6; say(v, NB.pick(['Füür! FÜÜR!', 'Use, alli use!', 'Nid scho wider!'])); NB.Audio.babble('Füür! Füür!', v.c.voice, { pos: v }); }
-    for (const v of E.list) if (v.kind === 'villager' && !v.inside && !v.away && !v.fled && Math.hypot(v.x - b.cx, v.z - b.cz) < 30) { v.fled = { until: performance.now() / 1000 + 300, place: 'dorfplatz' }; v.goalKey = null; v.path = null; say(v, NB.pick(['Füür! Rüef d\'Füürwehr!', 'Ui nei, d\'Milchzentrale!', 'Wäg do!']), { quiet: true }); }
+    // a ring of places to watch from (17-23 m out, off the street), facing the fire
+    const ring = [];
+    for (const r of [17, 20, 23]) for (let a = 0; a < Math.PI * 2; a += Math.PI / 9) {
+      const x = b.cx + Math.cos(a + r) * r, z = b.cz + Math.sin(a + r) * r, [cx, cz] = map.toCell(x, z);
+      if (map.inB(cx, cz) && map.walkCost[cz * map.w + cx] && !map.inBuilding(x, z, 1.5) && map.streetDist(x, z) > 1.5) ring.push({ x, z, face: Math.atan2(b.cx - x, b.cz - z), sit: false });
+    }
+    map.spots = map.spots || {}; map.spots.fire = ring;
+    const now = performance.now() / 1000;
+    const watch = (v, until) => { v.fled = { until: now + until, place: 'fire' }; v.goalKey = null; v.path = null; v.fishing = null; };
+    // residents out of the house
+    for (const v of [...b.inside]) { v.leave(); watch(v, 600); v.pause = 0.6; say(v, NB.pick(['Füür! FÜÜR!', 'Use, alli use!', 'Nid scho wider!'])); NB.Audio.babble('Füür! Füür!', v.c.voice, { pos: v }); }
+    // the village comes to look: everyone outdoors within 160 m, and half of those at home within 90 m
+    for (const v of E.list) {
+      if (v.kind !== 'villager' || v.away || v.fled || v.c.guard === 'weiher' && v.guarding) continue;
+      const d = Math.hypot(v.x - b.cx, v.z - b.cz);
+      if (!v.inside && d < 160) { watch(v, NB.rr(240, 420)); if (d < 40) say(v, NB.pick(['Füür! Rüef d\'Füürwehr!', 'Ui nei, d\'Milchzentrale!', 'Es brönnt!']), { quiet: true }); }
+      else if (v.inside && d < 90 && Math.random() < 0.5) { v.leave(); watch(v, NB.rr(200, 360)); }
+    }
     setTimeout(() => {
       if (E.fire !== F) return;
       const d = NB.Data.firebrigade || {};
@@ -942,7 +1027,11 @@
         if (map.inB(cx, cz) && map.walkCost[cz * map.w + cx]) spots.push({ x, z });
       }
       spots.sort((p, q) => Math.hypot(p.x - T.x, p.z - T.z) - Math.hypot(q.x - T.x, q.z - T.z)); // nearest the engine first
-      crew.forEach((d, i) => { const sp = spots[i % Math.max(1, spots.length)] || { x: T.x, z: T.z }; F.crew.push(add(new Firefighter(d, sp, T))); });
+      const front = spots.slice().sort((p, q) => (q.x + q.z) - (p.x + p.z))[0]; // towards the viewer: nothing hides the lead
+      crew.forEach((d, i) => {
+        const sp = d.lead && front ? front : (spots.filter((q) => q !== front)[i % Math.max(1, spots.length - 1)] || spots[0] || { x: T.x, z: T.z });
+        const ff = add(new Firefighter(d, sp, T)); if (d.lead) { ff.lineT = 1.5; } F.crew.push(ff);
+      });
     }
     if (F.phase === 'fighting') {
       const spraying = F.crew.filter((c) => c.state === 'spray').length;
@@ -953,7 +1042,7 @@
       }
       if (F.intensity <= 0 && F.crew.every((c) => c.done)) { F.phase = 'leaving'; T.depart(true); }
     }
-    if (F.phase === 'leaving' && T.done) { F.phase = 'soot'; F.sootT = 0; }
+    if (F.phase === 'leaving' && T.done) { F.phase = 'soot'; F.sootT = 0; for (const v of E.list) if (v.fled && v.fled.place === 'fire') v.fled.until = Math.min(v.fled.until, performance.now() / 1000 + NB.rr(5, 40)); }
     if (F.phase === 'soot') { // the walls slowly lose the soot (~10 min)
       F.sootT += dt; const k = Math.min(1, F.sootT / 600), g = Math.round(0x6e + (0xff - 0x6e) * k);
       if (b.sprite) b.sprite.tint = (g << 16) | (Math.round(0x6a + (0xff - 0x6a) * k) << 8) | Math.round(0x66 + (0xff - 0x66) * k);
@@ -1077,6 +1166,18 @@
       }
       return drive.slice().reverse().concat(laneOffset(toEnd.concat(out), 1.4));
     }
+    // road between home and a destination bay (the petrol station on the Bremgarterstrasse): driveway -> own
+    // street -> Niederwilerstrasse to its north-east end -> main road -> bay (and back)
+    roadTo(dest, back) {
+      this.road(true); // builds this.rd
+      const { toEnd, k, drive } = this.rd, route = map.route, P = map.parkings[dest], R = NB.Scene.racer || [];
+      const main = R.map(([x, z]) => ({ x, z }));
+      const cut = map.fuel ? nearestIdx(main, { x: map.fuel.road[0], z: map.fuel.road[1] }) : main.length - 1;
+      const toNE = route.slice(0, k + 1).reverse(); // junction -> route[0] (the north-east end, where the main road starts)
+      const out = toEnd.concat(toNE, main.slice(0, cut + 1));
+      if (!back) return drive.slice().reverse().concat(laneOffset(out, 1.4), [{ x: P.x, z: P.z, slow: true }]);
+      return laneOffset(out.slice().reverse(), 1.4).concat(drive, [{ x: this.parking.x, z: this.parking.z, slow: true }]);
+    }
     start() {
       if (!this.parking) return;
       const min = NB.clock.minutes();
@@ -1105,9 +1206,25 @@
         const ms = this.members(t);
         if (ms.every((m) => m.away) || this.t > 150) {
           ms.forEach((m) => { if (!m.away) m.enterCar(); });
-          this.car.departAlong(this.road(false)); this.state = 'out';
+          if (t.dest && map.parkings[t.dest]) { this.car.driveTo(this.roadTo(t.dest, false), map.parkings[t.dest]); this.state = 'toDest'; }
+          else { this.car.departAlong(this.road(false)); this.state = 'out'; }
           if (NB.UI.onScreen(this.car)) NB.Audio.play('honk', { pos: this.car, rate: 0.85, vol: 0.5 });
         }
+        return;
+      }
+      if (this.state === 'toDest') { // arrived at the destination (petrol station): get out, stay a while
+        if (this.car.parked) { const P = map.parkings[t.dest]; this.members(t).forEach((m, i) => m.arrive(P, false, i, t.at && t.at[m.c.id])); this.state = 'atDest'; this.t = 0; }
+        return;
+      }
+      if (this.state === 'atDest') {
+        this.t += dt;
+        if (this.t > (t.stay || 60)) { this.members(t).forEach((m) => m.goToCar(map.parkings[t.dest], false)); this.state = 'boardingBack'; this.t = 0; }
+        return;
+      }
+      if (this.state === 'boardingBack') {
+        this.t += dt;
+        const ms = this.members(t);
+        if (ms.every((m) => m.away) || this.t > 150) { ms.forEach((m) => { if (!m.away) m.enterCar(); }); this.car.driveTo(this.roadTo(t.dest, true), this.parking); this.state = 'returning'; }
         return;
       }
       if (this.state === 'out') {
@@ -1130,7 +1247,16 @@
   }
   const outings = [];
 
-  let nextCar = 4, nextBus = 8, busDir = 0, nextTractor = 14;
+  let nextCar = 4, nextBus = 8, busDir = 0, nextTractor = 14, nextRacer = NB.rr(20, 60);
+  // the evening racer: after 20:00 a car tears along the Bremgarterstrasse to the roundabout
+  function spawnRacer() {
+    const R = NB.Scene.racer;
+    if (!R || R.length < 3 || E.list.some((e) => e.type === 'racer')) return false;
+    const path = laneOffset(R.map(([x, z]) => ({ x, z })), 1.6);
+    const v = add(new Vehicle('racer', false, { path, color: NB.pick(['#f2c230', '#111318', '#e03a3a', '#f4f4f0']), name: 'Raser' }));
+    v.brakeAt = Math.max(6, R.length - Math.max(0, R.findIndex(([x, z]) => Math.hypot(x - NB.Scene.kreisel[0], z - NB.Scene.kreisel[1]) < 45)) + 1); // brake from ~45 m before the roundabout
+    return true;
+  }
   // a tractor works a field by day (not in winter, not in rain/snow); otherwise one may drive through the village
   function spawnFieldTractor(fieldIndex) {
     const fields = map.fields.filter((f) => map.fieldLanes(f).length >= 3 && (fieldIndex == null || f.i === fieldIndex));
@@ -1143,7 +1269,8 @@
   function spawnTraffic(dt) {
     const m = NB.clock.minutes();
     const nightQuiet = NB.inWindow(m, '00:30', '05:30');
-    nextCar -= dt; nextBus -= dt; nextTractor -= dt;
+    nextCar -= dt; nextBus -= dt; nextTractor -= dt; nextRacer -= dt;
+    if (nextRacer <= 0) { nextRacer = NB.rr(240, 480); if (NB.inWindow(m, '20:00', '23:30')) spawnRacer(); }
     if (nextBus <= 0) { nextBus = NB.rr(50, 90); if (!nightQuiet) add(new Vehicle('bus', busDir++ % 2 === 1)); }
     if (nextCar <= 0) { nextCar = nightQuiet ? NB.rr(40, 90) : NB.rr(12, 30); add(new Vehicle('car', Math.random() < 0.5)); }
     if (nextTractor <= 0) {
@@ -1169,9 +1296,11 @@
     (NB.Data.outings || []).forEach((d, idx) => { const o = new Outing(d, idx); outings.push(o); o.start(); });
     (NB.Data.animals || []).filter((a) => a.kind === 'cat').forEach((a) => add(new Cat(a)));
     if (map.water.length) (NB.Data.animals || []).filter((a) => a.kind === 'duck').forEach((a) => add(new Duck(a)));
+    if (map.deer) (NB.Data.animals || []).filter((a) => a.kind === 'deer').forEach((a) => add(new Deer(a)));
     (NB.Data.animals || []).filter((a) => a.kind === 'dog').forEach((a) => { const o = E.list.find((e) => e.kind === 'villager' && e.c.id === a.owner); if (o) add(new Dog(a, o)); });
   };
   E.spawnFieldTractor = spawnFieldTractor; // for tests / the console
+  E.spawnRacer = spawnRacer;
   E.visits = visits;
   E.outings = outings;
   E.update = function (dt) {

@@ -119,7 +119,7 @@
     occupied.push([K.bench.x, K.bench.z]);
     if (K.parking) occupied.push([K.parking.x, K.parking.z]);
   }
-  const freeSpot = (x, z, streetGap, bGap, gap) => map.streetDist(x, z) > streetGap && !map.inBuilding(x, z, bGap) && !map.fieldAt(x, z) && map.pondDist(x, z) > 4 && !occupied.some(([ox, oz]) => Math.hypot(ox - x, oz - z) < gap);
+  const freeSpot = (x, z, streetGap, bGap, gap) => map.streetDist(x, z) > streetGap && !map.inBuilding(x, z, bGap) && !map.fieldAt(x, z) && map.pondDist(x, z) > 4 && !(map.farmProps && (Math.hypot(x - map.farmProps.table.x, z - map.farmProps.table.z) < 5.5 || (map.farmProps.parking && Math.hypot(x - map.farmProps.parking.x, z - map.farmProps.parking.z) < 4))) && !(map.fuel && Math.hypot(x - map.fuel.x, z - map.fuel.z) < 17) && !(map.deer && (map.deer.inside(x, z, -2.5) || (map.deer.stand && Math.hypot(x - map.deer.stand.x, z - map.deer.stand.z) < 5))) && !occupied.some(([ox, oz]) => Math.hypot(ox - x, oz - z) < gap);
   for (let k = 0; k < 1200 && occupied.length < 280; k++) {
     const x = NB.lerp(bx0 + 10, bx1 - 10, rnd()), z = NB.lerp(bz0 + 10, bz1 - 10, rnd());
     if (!freeSpot(x, z, 3.5, 3, 6)) continue;
@@ -136,7 +136,7 @@
   // ---------- lamps with ground glow ----------
   const lamps = [];
   for (const s of S.streets) {
-    if (s.kind === 'track') continue;
+    if (s.kind === 'track' || s.kind === 'main') continue; // no lamps on the field track and the country road
     const pl = polyline(s.pts);
     for (let d = 12, side = 1; d < pl.len - 4; d += 30, side = -side) {
       const p = pl.at(d), off = s.width / 2 + 1.4;
@@ -176,9 +176,13 @@
     const brec = M.bench(bench.heading);
     pickables.push({ sprite: placeStatic(brec, bench.x, 0, bench.z, zkey(bench.x, bench.z)), rec: brec,
       info: { name: 'Bänkli', lines: ['Es Bänkli vor em Buurehuus.', "Do hocked d'Mina am liebschte. ☀️"], sound: 'click', top: { x: bench.x, y: 1.4, z: bench.z } } });
-    const trec = M.sitzplatz();
+    // paving far below everything, table and stools each with their own depth
+    const pav = placeStatic(M.sitzPaving(), table.x, 0, table.z, zkey(table.x, table.z) - 1900);
+    pav.zIndex = zkey(table.x, table.z) - 1900;
+    const trec = M.sitzTable();
     pickables.push({ sprite: placeStatic(trec, table.x, 0, table.z, zkey(table.x, table.z)), rec: trec,
       info: { name: 'Sitzplatz', lines: ['De Sitzplatz – zäme brätle, zäme vibe-code.', 'Do wird am Abig gschwätzt.'], sound: 'click', top: { x: table.x, y: 1.6, z: table.z } } });
+    for (const [u, v] of [[1.25, 0], [-1.25, 0], [0, 1.25], [0, -1.25]]) { const [ox, oz] = I.unrot(u, v); placeStatic(M.stool(), table.x + ox, 0, table.z + oz, zkey(table.x + ox, table.z + oz)); }
   }
 
   // ---------- Ifangweg 23: André's boule court, Monika's hydrangeas from the Gärtnerei Gisler ----------
@@ -231,9 +235,16 @@
       s.pts.forEach(([x, z], k) => (k ? tg.lineTo((x - tx0) * TM, (z - tz0) * TM) : tg.moveTo((x - tx0) * TM, (z - tz0) * TM)));
       tg.stroke();
     };
-    for (const s of S.streets) if (s.kind !== 'track') stroke(s, s.width + 2.4, '#ff0000');
+    for (const s of S.streets) if (s.kind !== 'track' && s.kind !== 'main') stroke(s, s.width + 2.4, '#ff0000');
+    for (const s of S.streets) if (s.kind === 'main') stroke(s, s.width + 1.2, '#ff00ff'); // gravel shoulder
     for (const s of S.streets) if (s.kind === 'track') stroke(s, s.width, '#ff00ff'); // gravel
     for (const s of S.streets) if (s.kind !== 'track') stroke(s, s.width, '#00ff00');
+    if (map.fuel) { // petrol station forecourt: asphalt from the road edge to the shop
+      const f = map.fuel, hx = Math.sin(f.heading), hz = Math.cos(f.heading), P = (a, m) => [(f.x + hx * a + f.n[0] * m - tx0) * TM, (f.z + hz * a + f.n[1] * m - tz0) * TM];
+      tg.fillStyle = '#00ff00'; tg.beginPath();
+      [P(-9, -13.5), P(9, -13.5), P(9, 6), P(-9, 6)].forEach((q, k) => (k ? tg.lineTo(q[0], q[1]) : tg.moveTo(q[0], q[1])));
+      tg.closePath(); tg.fill();
+    }
     if (map.kochProps) { // boule court + the jeep's spot: gravel
       const K = map.kochProps;
       tg.fillStyle = '#ff00ff'; tg.beginPath();
@@ -247,6 +258,17 @@
       let c = G ? 2 : R && B ? 9 : R ? 1 : B ? 3 : 0;
       if (!c && fd[i * 4 + 3] > 127) { c = NB.clamp(Math.round(fd[i * 4 + 1] / 30), 4, 8); fang[i] = fd[i * 4]; }
       terrain[i] = c;
+    }
+    // the deer paddock: grass (no crops), worn earth at the gate, the rack and the shelter
+    if (map.deer) {
+      const D = map.deer;
+      for (let iz = 0; iz < th; iz++) for (let ix = 0; ix < tw; ix++) {
+        const x = tx0 + (ix + 0.5) / TM, z = tz0 + (iz + 0.5) / TM;
+        if (!D.inside(x, z, -1)) continue;
+        const i = iz * tw + ix;
+        if (terrain[i] >= 4 && terrain[i] <= 6) terrain[i] = 0;
+        if (Math.hypot(x - D.gate.x, z - D.gate.z) < 2.6 || Math.hypot(x - D.rack.x, z - D.rack.z) < 2.4 || Math.hypot(x - D.shelter.x, z - D.shelter.z) < 2.8) terrain[i] = 9;
+      }
     }
     // a grass border around the pond: no crops within 7 m of the water
     for (const w of map.water) {
@@ -378,6 +400,45 @@
       }
     }
     NB.world.bales = bales;
+  }
+
+  // ---------- Hirschfarm: fence in short segments (own depth each), gate, rack, shelter, pumpkin market ----------
+  if (map.deer) {
+    const D = map.deer, hT = Math.atan2(D.t[0], D.t[1]), hN = Math.atan2(D.n[0], D.n[1]);
+    const seg = (a0, m0, a1, m1, gateAt) => { // fence line from (a0,m0) to (a1,m1) in paddock coordinates, 4 m pieces
+      const len = Math.hypot(a1 - a0, m1 - m0), n = Math.ceil(len / 4), along = Math.abs(a1 - a0) > Math.abs(m1 - m0);
+      for (let k = 0; k < n; k++) {
+        const u0 = k / n, u1 = (k + 1) / n, am = a0 + (a1 - a0) * (u0 + u1) / 2, mm = m0 + (m1 - m0) * (u0 + u1) / 2, L = len / n;
+        const p = D.at(am, mm), isGate = gateAt && Math.hypot(p.x - gateAt.x, p.z - gateAt.z) < L / 2 + 0.1;
+        placeStatic(M.fence(L, along ? hT : hN, isGate), p.x, 0, p.z, zkey(p.x, p.z));
+      }
+    };
+    seg(-D.A, D.M0, D.A, D.M0, D.gate); seg(-D.A, D.M1, D.A, D.M1); seg(-D.A, D.M0, -D.A, D.M1); seg(D.A, D.M0, D.A, D.M1);
+    placeStatic(M.feedRack(hT), D.rack.x, 0, D.rack.z, zkey(D.rack.x, D.rack.z));
+    placeStatic(M.deerShelter(hN), D.shelter.x, 0, D.shelter.z, zkey(D.shelter.x, D.shelter.z));
+    const srec = M.sign();
+    const sp = D.at(-D.A + 7, D.M0 - 1.2);
+    pickables.push({ sprite: placeStatic(srec, sp.x, 0, sp.z, zkey(sp.x, sp.z)), rec: srec, info: { name: 'Hirschfarm', lines: ['Hirschfarm Nesselnbach – Damhirsch hinder de Niederwilerstrass 21.', 'Bitte nid füettere, d\'Hirsch händ gnueg Heu.', 'Im Herbscht: Kürbismarkt vorne a de Strass! 🎃'], sound: 'click', top: { x: sp.x, y: 1.9, z: sp.z } } });
+    if (D.stand) {
+      const autumn = NB.season === 'autumn', st = D.stand;
+      const prec = M.pumpkinStand(st.heading, autumn);
+      pickables.push({ sprite: placeStatic(prec, st.x, 0, st.z, zkey(st.x, st.z)), rec: prec,
+        info: { name: autumn ? 'Kürbismarkt' : 'Kürbisstand', lines: autumn ? ['Kürbismarkt vo de Hirschfarm: Hokkaido, Butternut, Riesechürbis! 🎃', 'Drü Franke s\'Kilo, Kasse vo Vertraue.', 'De gröscht Kürbis wiegt 48 Kilo.'] : ['De Kürbisstand – richtig voll isch er im Herbscht.', 'Kasse vo Vertraue. 🎃'], sound: 'clink', top: { x: st.x, y: 1.6, z: st.z } } });
+      const fx = Math.sin(st.heading), fz = Math.cos(st.heading);
+      const piles = autumn ? [[-2.6, 0.4], [2.6, 0.2], [-3.2, 1.8], [3.4, 1.9], [0, -2.2]] : [[-2.4, 0.6]];
+      piles.forEach(([k, m], i) => { const x = st.x - fz * k + fx * m, z = st.z + fx * k + fz * m; if (!map.inBuilding(x, z, 0.6) && map.streetDist(x, z) > 1.5) placeStatic(M.pumpkinPile(i), x, 0, z, zkey(x, z)); });
+    }
+  }
+
+  // ---------- petrol station on the Bremgarterstrasse ----------
+  if (map.fuel) {
+    const f = map.fuel, hx = Math.sin(f.heading), hz = Math.cos(f.heading);
+    // model faces +z = towards the road; the station's "forward" is -n (towards the road)
+    const rec = M.fuelStation(Math.atan2(-f.n[0], -f.n[1]));
+    const cx = f.x, cz = f.z;
+    pickables.push({ sprite: placeStatic(rec, cx, 0, cz, zkey(cx - f.n[0] * 3, cz - f.n[1] * 3)), rec,
+      info: { name: f.name, lines: ['Gratank – Tankstelle a de Bremgarterstrasse. 24 Stund offe.', 'Diesel, Bläifrei 95 und 98. Und Luft für d\'Pneu.', 'De André tankt do sin Jeep. Voll, bitte!'], sound: 'click', top: { x: cx, y: 5.2, z: cz } } });
+    void hx; void hz;
   }
 
   // ---------- Löli-Weiher: reeds along the shore, the owner's sign at the fishing spot ----------
