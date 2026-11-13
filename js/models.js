@@ -29,7 +29,7 @@
     const homey = b.kind === 'house' || b.kind === 'farmhouse';
     const floorH = 2.8;
     const H = small ? 2.6 : barnKind ? 4.8 : chapel ? 5.5 : dairy ? Math.max(4.8, b.levels * floorH + 0.9) : b.levels * floorH + 0.4;
-    const wall = chapel ? '#fbf8f2' : small ? '#d9d2c6' : barnKind ? '#c99a6b' : dairy ? '#f6f3ec' : WALLS[i % WALLS.length];
+    const wall = b.wallColor || (chapel ? '#fbf8f2' : small ? '#d9d2c6' : barnKind ? '#c99a6b' : dairy ? '#f6f3ec' : WALLS[i % WALLS.length]);
     const WOOD = '#b07a4a', PLANK = '#8f5f36';
     const roofCol = P.snow ? (i % 3 ? '#f4f7fb' : '#e9eef5') : b.roofColor || (chapel ? '#6f7486' : ROOFS[(i * 3) % ROOFS.length]);
     const parts = (b.parts && b.parts.length ? b.parts : [{ u: 0, v: 0, w: b.w, d: b.d }]).map((p) => ({ ...p, w: Math.max(1.5, p.w), d: Math.max(1.5, p.d) }));
@@ -67,7 +67,8 @@
       }
       if (!b.oneRoof) {
         const over = small ? 0.25 : 0.6;
-        m.gable(u0 - over, v0 - over, H, p.w + over * 2, p.d + over * 2, rh, p.w >= p.d ? 'u' : 'v', roofCol);
+        if (b.roof === 'hipped') m.hip(u0 - over, v0 - over, H, p.w + over * 2, p.d + over * 2, rh * 0.85, roofCol);
+        else m.gable(u0 - over, v0 - over, H, p.w + over * 2, p.d + over * 2, rh, p.w >= p.d ? 'u' : 'v', roofCol);
         top = Math.max(top, H + rh);
       }
       // windows on the two visible faces (+u right, +v left)
@@ -650,6 +651,65 @@
     const mk = (rows, o) => { const right = I.rows(rows, colorOf, o); return { right, left: flipRec(right) }; };
     const o = { shadowW: 13, shadowH: 1.8 };
     return { walk: [mk(withAntlers(DEER.stand), o), mk(withAntlers(DEER.walk2), o)], stand: mk(withAntlers(DEER.stand), o), graze: mk(withAntlers(DEER.graze, true), o), lie: mk(withAntlers(DEER.lie, true), { shadowW: 13, shadowH: 1.5 }) };
+  };
+
+  // ---------- garden pieces (Iris's garden at Ifangweg 15) ----------
+  M.hedge = function (len, heading) {
+    const key = 'hedge' + len.toFixed(1) + '/' + Math.round(heading * 100);
+    if (!treeCache[key]) {
+      const m = I.model(heading), col = P.snow ? '#9fae9a' : SEASON === 'autumn' ? '#6f8f4a' : '#4f8a46';
+      m.shadow(-0.45, -len / 2, 0.9, len, 1.1);
+      m.cbox(0, 0, 0, 0.9, len, 1.15, col);
+      for (let z = -len / 2 + 0.5; z < len / 2; z += 1.1) m.cbox(0, z, 1.1, 0.7, 0.5, 0.12, NB.shade(col, 1.12), { noOutline: true });
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  M.flowerBed = function (variant) {
+    const key = 'fbed' + variant;
+    if (!treeCache[key]) {
+      const r = NB.seeded(variant * 17 + 9), W = 18, H = 9;
+      const pal = [['#ff4f7a', '#ffd23f', '#ffffff', '#c9b4ff'], ['#e8462a', '#ff9ecf', '#ffffff', '#ffb347'], ['#ffffff', '#f4f1e6', '#ffe9a8', '#ffffff'], ['#9a6ad0', '#ff7aa8', '#5bb0ff', '#ffd23f']][variant % 4];
+      treeCache[key] = art(W, H, (px, rect) => {
+        rect(0, 6, W, 3, '#6b4a2e'); rect(1, 5, W - 2, 1, '#7a5a3a');
+        for (let i = 0; i < 26; i++) { const x = 1 + ((r() * (W - 2)) | 0), y = 1 + ((r() * 5) | 0); px(x, y, P.snow ? '#e8eef2' : SEASON === 'winter' ? '#7a6a52' : '#4f8f4a'); }
+        if (!P.snow && SEASON !== 'winter') for (let i = 0; i < 16; i++) { const x = 1 + ((r() * (W - 2)) | 0), y = ((r() * 5) | 0); px(x, y, pal[(r() * 4) | 0]); }
+      }, { shadowH: 1.2, shadowW: 14 });
+    }
+    return treeCache[key];
+  };
+  M.firePit = function () {
+    if (!treeCache.firePit) {
+      const m = I.model();
+      prism8(m, 0, 0, 0.75, 0, 0.3, '#8a8580');
+      prism8(m, 0, 0, 0.5, 0.05, 0.3, '#3a3330');
+      m.cbox(-0.15, 0.1, 0.3, 0.6, 0.14, 0.14, '#6b4a2e'); m.cbox(0.1, -0.1, 0.3, 0.14, 0.6, 0.14, '#7a5a3a');
+      treeCache.firePit = m.render();
+    }
+    return treeCache.firePit;
+  };
+  M.shed = function (heading) {
+    const key = 'shed' + Math.round(heading * 100);
+    if (!treeCache[key]) {
+      const m = I.model(heading);
+      m.shadow(-1.3, -1.0, 2.6, 2.0, 2.6);
+      m.cbox(0, 0, 0, 2.6, 2.0, 2.2, '#9a7a56');
+      m.gable(-1.45, -1.15, 2.2, 2.9, 2.3, 0.7, 'u', '#5f5a62');
+      m.cbox(0, 1.02, 0, 0.9, 0.06, 1.8, '#6b4a2e');
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  M.loungeChair = function (heading) {
+    const key = 'lounge' + Math.round(heading * 100);
+    if (!treeCache[key]) {
+      const m = I.model(heading);
+      m.shadow(-0.35, -0.9, 0.7, 1.8, 0.5);
+      m.cbox(0, 0.3, 0.25, 0.7, 1.2, 0.1, '#e8e2d2'); m.cbox(0, -0.55, 0.25, 0.7, 0.55, 0.55, '#e8e2d2');
+      [[-0.3, 0.8], [0.3, 0.8], [-0.3, -0.7], [0.3, -0.7]].forEach(([x, z]) => m.cbox(x, z, 0, 0.06, 0.06, 0.25, '#6a6a70'));
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
   };
 
   // mirror a finished sprite record horizontally

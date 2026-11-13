@@ -257,6 +257,55 @@
       if (Math.abs(a) < 7 && m > -4.5 && m < 10.5) { map.walkCost[cz * W + cx] = 0; map.animalCost[cz * W + cx] = 0; }
     }
   }
+  // Iris's garden at Ifangweg 15: on the side away from the Ifangweg (south): terrace with table, chairs and a lounge
+  // bench, lawn with a curved stone path, flower beds and hydrangeas, a vegetable patch, hedges along the edges, trees,
+  // a seating circle with a fire pit and white shrubs at the far end, a garden shed
+  const ih = Object.values(map.buildings).find((b) => b.garden);
+  if (ih) {
+    const ca = Math.cos(ih.angle), sa = Math.sin(ih.angle);
+    let side = null; // facade farthest from the street
+    for (const [nx, nz, half] of [[ca, sa, ih.w / 2], [-ca, -sa, ih.w / 2], [-sa, ca, ih.d / 2], [sa, -ca, ih.d / 2]]) {
+      const px = ih.cx + nx * (half + 8), pz = ih.cz + nz * (half + 8), sd = map.streetDist(px, pz), blocked = map.inBuilding(px, pz, 2);
+      if (!blocked && (!side || sd > side.sd)) side = { sd, n: [nx, nz], half, across: half === ih.w / 2 ? ih.d / 2 : ih.w / 2 };
+    }
+    const n = side.n, t = [-n[1], n[0]], B = [ih.cx + n[0] * side.half, ih.cz + n[1] * side.half];
+    const at = (a, m) => ({ x: B[0] + t[0] * a + n[0] * m, z: B[1] + t[1] * a + n[1] * m });
+    const A0 = -side.across - 2, A1 = side.across + 3, M1 = 26; // garden rectangle in (a, m)
+    const local = (x, z) => [(x - B[0]) * t[0] + (z - B[1]) * t[1], (x - B[0]) * n[0] + (z - B[1]) * n[1]];
+    const inside = (x, z, pad) => { const [a, m] = local(x, z); return a > A0 - (pad || 0) && a < A1 + (pad || 0) && m > -(pad || 0) && m < M1 + (pad || 0); };
+    const G = (map.irisGarden = { B, t, n, at, local, inside, A0, A1, M1, angle: Math.atan2(t[1], t[0]) });
+    G.terrace = { a0: -5, a1: 5, m0: 0.4, m1: 4.6 };
+    G.table = at(-1, 2.6); G.chairs = [at(-2.4, 2.6), at(0.4, 2.6)]; G.lounge = [at(3.6, 1.6), at(3.6, 3.2)];
+    G.pit = at(A1 - 4.5, M1 - 4); G.pitSeats = [at(A1 - 4.5 - 2.2, M1 - 4), at(A1 - 4.5, M1 - 4 - 2.2)];
+    G.path = [at(0, 4.6), at(-4, 12), at(2, 18), G.pit];
+    G.veg = { a0: A0 + 1.5, a1: A0 + 5.5, m0: 13, m1: 18 };
+    G.beds = [at(-6.2, 0.9), at(6.2, 0.9), at(A1 - 1.2, 8), at(A1 - 1.2, 14), at(A0 + 1.2, 8), at(A1 - 1.5, M1 - 1.5), at(A1 - 8.5, M1 - 1.5)];
+    G.hyd = [at(A0 + 1.3, 21), at(A1 - 1.3, 20), at(-6.8, 5.5), at(6.8, 5.5)];
+    G.trees = [{ p: at(A0 + 2.5, 24), kind: 'leaf', v: 2 }, { p: at(A1 - 2, 3), kind: 'leaf', v: 5 }, { p: at(A0 + 1.5, 10.5), kind: 'pine', v: 1 }, { p: at(4, 11), kind: 'leaf', v: 6 }];
+    G.shed = at(A0 + 2.2, 2.5); G.shedHeading = Math.atan2(t[0], t[1]);
+    G.hedges = []; // east and west edges, south edge
+    for (let m = 1; m < M1; m += 3) { G.hedges.push({ p: at(A1 + 0.3, m + 1.5), h: Math.atan2(n[0], n[1]), len: 3 }); if (m > 6) G.hedges.push({ p: at(A0 - 0.3, m + 1.5), h: Math.atan2(n[0], n[1]), len: 3 }); }
+    for (let a = A0; a < A1; a += 3) G.hedges.push({ p: at(a + 1.5, M1 + 0.3), h: Math.atan2(t[0], t[1]), len: Math.min(3, A1 - a) });
+    G.hedges = G.hedges.filter((h) => !map.inBuilding(h.p.x, h.p.z, 0.8) && map.streetDist(h.p.x, h.p.z) > 1);
+    // spots: terrace seats, fire-pit seats, gardening stations (water the beds, hydrangeas and the vegetables)
+    map.spots = map.spots || {};
+    const faceTo = (p, q) => Math.atan2(q.x - p.x, q.z - p.z);
+    map.spots.terrasse = G.chairs.map((c) => ({ x: c.x, z: c.z, face: faceTo(c, G.table), sit: true })).concat(G.lounge.map((c) => ({ x: c.x, z: c.z, face: Math.atan2(n[0], n[1]), sit: true })), [at(-3.5, 1.5), at(1.5, 1.2)].map((c) => ({ x: c.x, z: c.z, face: faceTo(c, G.table), sit: false })));
+    map.spots.fuurstell = G.pitSeats.map((c) => ({ x: c.x, z: c.z, face: faceTo(c, G.pit), sit: true })).concat([at(A1 - 4.5 + 2.2, M1 - 4)].map((c) => ({ x: c.x, z: c.z, face: faceTo(c, G.pit), sit: false })));
+    const stations = G.beds.map((b, i) => ({ bush: b, stand: at(...(() => { const [a, m] = local(b.x, b.z); return [a + (a > 0 ? -1.6 : 1.6), m + (m < 2 ? 1.4 : m > M1 - 3 ? -1.4 : 0)]; })()) }))
+      .concat(G.hyd.map((b) => ({ bush: b, stand: at(...(() => { const [a, m] = local(b.x, b.z); return [a + (a > 0 ? -1.6 : 1.6), m]; })()) })), [{ bush: at((G.veg.a0 + G.veg.a1) / 2, (G.veg.m0 + G.veg.m1) / 2), stand: at(G.veg.a1 + 1.2, (G.veg.m0 + G.veg.m1) / 2) }]);
+    map.spots.garte = stations.map((st) => ({ x: st.stand.x, z: st.stand.z, face: faceTo(st.stand, st.bush), sit: false, bush: st.bush }));
+    const box = (ps, r) => [Math.min(...ps.map((p) => p.x)) - r, Math.min(...ps.map((p) => p.z)) - r, Math.max(...ps.map((p) => p.x)) + r, Math.max(...ps.map((p) => p.z)) + r];
+    map.pois.terrasse = box(map.spots.terrasse, 1); map.pois.fuurstell = box(map.spots.fuurstell, 1); map.pois.garte = box(map.spots.garte, 1);
+    // fields never reach into the garden; hedges, shed, table, pit are not walkable
+    const fieldAt0 = map.fieldAt; map.fieldAt = (x, z) => (inside(x, z, 1) ? null : fieldAt0(x, z));
+    const blockers = G.hedges.map((h) => ({ x: h.p.x, z: h.p.z, r: 1.6 })).concat([{ x: G.table.x, z: G.table.z, r: 0.8 }, { x: G.pit.x, z: G.pit.z, r: 0.9 }, { x: G.shed.x, z: G.shed.z, r: 1.6 }], G.trees.map((tr) => ({ x: tr.p.x, z: tr.p.z, r: 0.6 })));
+    for (let cz = 0; cz < H; cz++) for (let cx = 0; cx < W; cx++) {
+      const c = map.cellCentre(cx, cz), i = cz * W + cx;
+      if (inside(c.x, c.z, 0) && map.walkCost[i]) map.walkCost[i] = Math.min(map.walkCost[i], 1.6); // a garden is nice to walk in
+      if (blockers.some((b) => Math.hypot(c.x - b.x, c.z - b.z) < b.r)) { map.walkCost[i] = 0; map.animalCost[i] = 0; }
+    }
+  }
   // Hirschfarm behind Niederwilerstrasse 21.1: fenced deer paddock on the side away from the street, with a gate,
   // a feeding rack and a shelter; pumpkin stand (Kürbismarkt) by the street in front of the building
   const hf = Object.values(map.buildings).find((b) => b.addr === 'Niederwilerstrasse 21.1');

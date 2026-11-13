@@ -119,7 +119,7 @@
     occupied.push([K.bench.x, K.bench.z]);
     if (K.parking) occupied.push([K.parking.x, K.parking.z]);
   }
-  const freeSpot = (x, z, streetGap, bGap, gap) => map.streetDist(x, z) > streetGap && !map.inBuilding(x, z, bGap) && !map.fieldAt(x, z) && map.pondDist(x, z) > 4 && !(map.farmProps && (Math.hypot(x - map.farmProps.table.x, z - map.farmProps.table.z) < 5.5 || (map.farmProps.parking && Math.hypot(x - map.farmProps.parking.x, z - map.farmProps.parking.z) < 4))) && !(map.fuel && Math.hypot(x - map.fuel.x, z - map.fuel.z) < 17) && !(map.deer && (map.deer.inside(x, z, -2.5) || (map.deer.stand && Math.hypot(x - map.deer.stand.x, z - map.deer.stand.z) < 5))) && !occupied.some(([ox, oz]) => Math.hypot(ox - x, oz - z) < gap);
+  const freeSpot = (x, z, streetGap, bGap, gap) => map.streetDist(x, z) > streetGap && !map.inBuilding(x, z, bGap) && !map.fieldAt(x, z) && map.pondDist(x, z) > 4 && !(map.farmProps && (Math.hypot(x - map.farmProps.table.x, z - map.farmProps.table.z) < 5.5 || (map.farmProps.parking && Math.hypot(x - map.farmProps.parking.x, z - map.farmProps.parking.z) < 4))) && !(map.fuel && Math.hypot(x - map.fuel.x, z - map.fuel.z) < 17) && !(map.deer && (map.deer.inside(x, z, -2.5) || (map.deer.stand && Math.hypot(x - map.deer.stand.x, z - map.deer.stand.z) < 5))) && !(map.irisGarden && map.irisGarden.inside(x, z, 2)) && !occupied.some(([ox, oz]) => Math.hypot(ox - x, oz - z) < gap);
   for (let k = 0; k < 1200 && occupied.length < 280; k++) {
     const x = NB.lerp(bx0 + 10, bx1 - 10, rnd()), z = NB.lerp(bz0 + 10, bz1 - 10, rnd());
     if (!freeSpot(x, z, 3.5, 3, 6)) continue;
@@ -258,6 +258,23 @@
       let c = G ? 2 : R && B ? 9 : R ? 1 : B ? 3 : 0;
       if (!c && fd[i * 4 + 3] > 127) { c = NB.clamp(Math.round(fd[i * 4 + 1] / 30), 4, 8); fang[i] = fd[i * 4]; }
       terrain[i] = c;
+    }
+    // Iris's garden: no crops, paved terrace and seating circle (plaza), curved stone path (gravel), vegetable rows
+    if (map.irisGarden) {
+      const G = map.irisGarden, bucket = Math.round((((G.angle % Math.PI) + Math.PI) % Math.PI) / Math.PI * 100);
+      const bez = (u) => { const P = G.path, q0 = P[0], q1 = P[1], q2 = P[2], q3 = P[3]; const a = 1 - u; return { x: a * a * a * q0.x + 3 * a * a * u * q1.x + 3 * a * u * u * q2.x + u * u * u * q3.x, z: a * a * a * q0.z + 3 * a * a * u * q1.z + 3 * a * u * u * q2.z + u * u * u * q3.z }; };
+      const pathPts = []; for (let u = 0; u <= 1.0001; u += 0.02) pathPts.push(bez(u));
+      for (let iz = 0; iz < th; iz++) for (let ix = 0; ix < tw; ix++) {
+        const x = tx0 + (ix + 0.5) / TM, z = tz0 + (iz + 0.5) / TM;
+        if (!G.inside(x, z, 1)) continue;
+        const i = iz * tw + ix, [a, m] = G.local(x, z);
+        if (terrain[i] >= 4 && terrain[i] <= 6) terrain[i] = 0;
+        if (terrain[i] !== 0) continue;
+        if (a > G.terrace.a0 && a < G.terrace.a1 && m > G.terrace.m0 && m < G.terrace.m1) terrain[i] = 3;
+        else if (Math.hypot(x - G.pit.x, z - G.pit.z) < 2.6) terrain[i] = 3;
+        else if (a > G.veg.a0 && a < G.veg.a1 && m > G.veg.m0 && m < G.veg.m1) { terrain[i] = 6; fang[i] = bucket; }
+        else if (pathPts.some((q) => Math.hypot(q.x - x, q.z - z) < 0.6)) terrain[i] = 9;
+      }
     }
     // the deer paddock: grass (no crops), worn earth at the gate, the rack and the shelter
     if (map.deer) {
@@ -400,6 +417,24 @@
       }
     }
     NB.world.bales = bales;
+  }
+
+  // ---------- Iris's garden: furniture, beds, hedges, trees, fire pit, shed ----------
+  if (map.irisGarden) {
+    const G = map.irisGarden, put = (rec, p, bias) => placeStatic(rec, p.x, 0, p.z, zkey(p.x, p.z) + (bias || 0));
+    const trec = M.table();
+    pickables.push({ sprite: put(trec, G.table), rec: trec, info: { name: 'Terrasse vo de Iris', lines: ['Kafi und Züpfe uf de Terrasse. ☕', 'Do sitzt d\'Iris am liebschte.', 'Lueg de Garte aa – alles vo de Iris pflanzt.'], sound: 'clink', top: { x: G.table.x, y: 1.6, z: G.table.z } } });
+    G.chairs.forEach((c) => put(M.stool(), c));
+    G.lounge.forEach((c) => put(M.loungeChair(Math.atan2(G.n[0], G.n[1])), c));
+    G.beds.forEach((b, i) => put(M.flowerBed(i), b));
+    G.hyd.forEach((b, i) => put(M.hortensie(i + 2), b));
+    G.hedges.forEach((h) => put(M.hedge(h.len, h.h), h.p));
+    G.trees.forEach((tr) => { put(M.tree(tr.kind, tr.v), tr.p); occupied.push([tr.p.x, tr.p.z]); });
+    const prec = M.firePit();
+    pickables.push({ sprite: put(prec, G.pit), rec: prec, info: { name: 'Füürstell', lines: ['Am Abig brönnt do es Füürli. 🔥', 'Cervelat, Schlangebrot und Gschichte.'], sound: 'click', top: { x: G.pit.x, y: 1.2, z: G.pit.z } } });
+    G.pitSeats.forEach((c) => put(M.bench(Math.atan2(G.pit.x - c.x, G.pit.z - c.z)), c));
+    put(M.flowerBed(2), G.at(G.A1 - 2.2, G.M1 - 6.5)); // white shrubs by the circle
+    put(M.shed(G.shedHeading), G.shed);
   }
 
   // ---------- Hirschfarm: fence in short segments (own depth each), gate, rack, shelter, pumpkin market ----------

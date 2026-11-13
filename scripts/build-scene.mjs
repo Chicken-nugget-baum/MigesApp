@@ -332,6 +332,10 @@ let racer = null, fuel = null, kreisel = null;
   }
 }
 
+// ---------------- Ifangweg 15 (Iris): hipped roof wings, light walls, brown tiles (from the aerial photo) ----------------
+const iris = blds.find((b) => b.egid === '559217');
+if (iris) Object.assign(iris, { roof: 'hipped', roofColor: '#8f6e5a', wallColor: '#ece8df', garden: true });
+
 // ---------------- fields (OSM landuse: farmland / meadow / orchard around the village) ----------------
 // Kept when they overlap the painted ground (bounds + margin). Crop kinds rotate per field (grain, meadow, root
 // crops) so the landscape has variety; `angle` is the long axis of the field (furrow / tractor direction).

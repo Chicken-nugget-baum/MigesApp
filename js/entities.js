@@ -215,7 +215,7 @@
           this.updateFishing(dt);
         } else if (this.act === 'boule' && map.kochProps) {
           this.updateBoule(dt);
-        } else if (this.act === 'garden' && map.kochProps) {
+        } else if (this.act === 'garden') {
           this.updateGarden(dt);
         } else if (g.place === 'fire' && this.spot) { // watching the fire: stand, face it, comment
           this.moving = false; this.heading = this.spot.face;
@@ -305,7 +305,7 @@
         this.dropT = (this.dropT || 0) - dt;
         if (this.dropT <= 0) { this.dropT = 0.1; NB.UI.fx(b.x + NB.rr(-0.35, 0.35), 1.0, b.z + NB.rr(-0.35, 0.35), 'water', { vy: -1.6, life: 0.55 }); }
       }
-      if (this.gardenT <= 0) { this.gardenT = null; const t = claimSpot(this, 'hortensien'); if (t) this.goTo(t.x, t.z); }
+      if (this.gardenT <= 0) { this.gardenT = null; const t = claimSpot(this, map.spots && map.spots[this.goalKey] ? this.goalKey : 'hortensien'); if (t) this.goTo(t.x, t.z); }
     }
     // ---- fishing at the Löli-Weiher (routine entry with do: 'fish') ----
     startFishing() {
