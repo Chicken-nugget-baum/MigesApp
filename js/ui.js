@@ -175,12 +175,143 @@
   };
 
   // ---------- DOM HUD ----------
+  // ---------- saved between visits (localStorage; works without it too) ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('nb-' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('nb-' + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } },
+  };
+  U.store = store;
+
+  // ---------- discoveries: little secrets to find, collected across visits ----------
+  const DISCOVERIES = [
+    { id: 'fire', name: "D'Milchzentrale brönnt", icon: '🔥', hint: 'Klopf mal gaaanz vill uf d\'Milchzentrale…' },
+    { id: 'raphy', name: 'De Raphy vo de Füürwehr', icon: '🚒', hint: 'Wer füehrt d\'Füürwehr vo Niederwil aa?' },
+    { id: 'knock', name: 'Klopf, klopf!', icon: '🚪', hint: 'Drü Mol a d\'Tür klopfe, wenn öpper dihei isch.' },
+    { id: 'zoomies', name: 'Lunas Zoomies', icon: '💨', hint: 'D\'Luna het mängisch en Rappel.' },
+    { id: 'purr', name: 'Schnurre', icon: '😻', hint: 'Lang uf e Chatz drücke.' },
+    { id: 'ride', name: 'Chatz uf em Hund', icon: '🐈', hint: 'D\'Luna und d\'Mina händ d\'Hünd vo de Mariana gern.' },
+    { id: 'poacher', name: 'Verwütscht am Weiher', icon: '🎣', hint: 'Fische am Löli-Weiher isch verbotte…' },
+    { id: 'manolo', name: 'De Manolo isch abghaue', icon: '🐕', hint: 'Eine vo de Border Collies macht gärn sis eigete Ding.' },
+    { id: 'manoloFound', name: 'Manolo gfunde', icon: '💛', hint: 'Mängisch gönd d\'Mariana und de Joel ihn go sueche.' },
+    { id: 'kuba', name: 'De Kuba bellt', icon: '🐶', hint: 'De Kuba bellt jede andere Hund aa.' },
+    { id: 'deer', name: 'Hirsch verschreckt', icon: '🦌', hint: 'Uf de Hirschfarm a de Niederwilerstrass…' },
+    { id: 'racer', name: 'De Raser', icon: '🏎️', hint: 'Am Abig uf de Bremgarterstrass.' },
+  ];
+  const found = new Set(store.get('found', []));
+  let toastT = 0;
+  function toast(text) {
+    const el = document.getElementById('toast'); if (!el) return;
+    el.textContent = text; el.classList.add('show'); clearTimeout(toastT);
+    toastT = setTimeout(() => el.classList.remove('show'), 3500);
+  }
+  function renderFound() {
+    const btn = document.getElementById('discover'); if (btn) btn.textContent = '✨ ' + found.size + '/' + DISCOVERIES.length;
+    const list = document.getElementById('foundlist'); if (!list) return;
+    list.innerHTML = DISCOVERIES.map((d) => found.has(d.id) ? `<li><span>${d.icon}</span> ${d.name}</li>` : `<li class="locked"><span>❔</span> ${d.hint}</li>`).join('');
+  }
+  U.discover = function (id) {
+    const d = DISCOVERIES.find((q) => q.id === id);
+    if (!d || found.has(id)) return;
+    found.add(id); store.set('found', [...found]); renderFound();
+    toast(`✨ Entdeckt: ${d.icon} ${d.name} (${found.size}/${DISCOVERIES.length})`);
+    NB.Audio.play('pop', { vol: 0.5 });
+  };
+
+  // ---------- character card: who it is, where they live, what they're doing right now, who they belong to ----------
+  const PLACES = {
+    sitzplatz: 'am Sitzplatz vor em Buurehuus', hof: 'uf em Hof', dorfplatz: 'uf em Dorfplatz', beiz: 'im Casino', casino: 'im Casino', terrasse: 'uf de Terrasse',
+    fischerplatz: 'am Löli-Weiher', weiher: 'am Löli-Weiher', kapelle: 'bi de Kapälle', bushalt: 'a de Bushaltestell', garte: 'im Garte', fuurstell: 'a de Füürstell',
+    hirschgehege: 'bim Hirschgehege', fuettern: 'bi de Hirsch', verkauf: 'am Kürbisstand', kuerbismarkt: 'am Kürbismärt', quartier: 'im Quartier', feld: 'uf em Fäld',
+    weide: 'uf de Weid', milchzentrale: 'bi de Milchzentrale', ifangweg: 'am Ifangweg', kapellenweg: 'am Kapälleweg', niederwilerstrasse: 'a de Niederwilerstrass',
+    unterdorf: 'im Unterdorf', reuss: 'a de Reuss', wald: 'im Wald', gartebahn: 'bi de Gartebahn', niederwil: 'z Niederwil', gnadenthal: 'im Gnadenthal', tankstelle: 'a de Tankstell',
+  };
+  const placeName = (k) => {
+    if (!k) return 'unterwägs';
+    if (k.startsWith('home:')) { const b = NB.map.buildings[k.slice(5)]; return b ? 'bi ' + b.name : 'dihei'; }
+    if (k.startsWith('hortensien') || k === 'garden') return 'im Garte';
+    return PLACES[k] || 'bi ' + k;
+  };
+  const CAT_STATE = { zoom: 'het Zoomies! 💨', sleep: 'schloft 💤', sit: 'hocket umenand', walk: 'streunt umenand', idle: 'luegt umenand', flee: 'flüchtet!', ride: 'rittet uf emene Hund 🐕' };
+  function doing(e) {
+    const asleep = e.c && e.c.sleep && NB.inWindow(NB.clock.minutes(), e.c.sleep[0], e.c.sleep[1]);
+    switch (e.kind) {
+      case 'villager':
+        if (e.away) return e.c.from ? 'z ' + e.c.from : 'nöd do';
+        if (e.toCar) return e.waitForBus ? 'wartet uf s\'Postauto' : 'gaht hei';
+        if (e.searching) return 'suecht de ' + e.searching.name + '! 😟';
+        if (e.inside) { const b = e.inBuilding || e.home; return asleep ? 'schloft 💤' : b === e.home ? 'dihei' : 'bi ' + b.name; }
+        if (e.fled) return e.fled.place === 'fire' ? 'luegt em Füür zue 🔥' : 'rennt vor em Weiher-Buur dervo!';
+        if (e.fishing) return 'fischt heimlich am Löli-Weiher 🎣';
+        if (e.worried && e.worried.state === 'roam') return 'macht sich Sorge um de ' + e.worried.name;
+        if (e.act === 'walk') return 'Gassirunde mit em Kuba 🐕';
+        if (e.act === 'garden') return 'schaffet im Garte 🌸';
+        if (e.act === 'boule') return 'spielt Boule 🎯';
+        if (e.guarding) return 'kontrolliert sin Weiher';
+        if (e.moving) return 'unterwägs, ' + placeName(e.goalKey).replace(/^(bi|am|im|uf|a|z) /, 'zu ').replace(/^zu (de|em) /, 'zu $1 ');
+        return (e.seated ? 'hocket ' : '') + placeName(e.goalKey || e.currentGoal().place);
+      case 'dog':
+        if (e.away) return 'mit ' + e.owner.name + ' unterwägs';
+        if (e.state === 'roam') return 'isch abghaue und macht sis eigete Ding! 💨';
+        if (e.state === 'return') return 'rennt zrugg zu ' + e.owner.name;
+        if (e.state === 'play') return 'spielt mit em ' + (e.partner ? e.partner.name : 'andere Hund') + ' 🐾';
+        if (e.sniffing) return 'schnüfflet';
+        return e.owner.inside ? 'wartet vor de Tür uf ' + e.owner.name : 'bi ' + e.owner.name;
+      case 'cat': return CAT_STATE[e.state] || 'streunt umenand';
+      case 'deer': return { graze: 'frisst Gras', lie: 'liit im Gras', walk: 'spaziert', stand: 'luegt umenand' }[e.state] || 'im Gehege';
+      case 'duck': return e.state === 'dip' ? 'tunkt ab 🦆' : 'schwümmt';
+      case 'firefighter': return e.spray ? 'löscht! 💦' : 'im Iisatz';
+      default: return e.moving === false || e.parked ? 'parkiert' : 'fahrt';
+    }
+  }
+  const ICON = { villager: '🧑', dog: '🐕', cat: '🐈', deer: '🦌', duck: '🦆', firefighter: '🚒', vehicle: '🚗', tractor: '🚜' };
+  function cardHtml(e) {
+    const L = NB.Entities.list, rows = [];
+    const add = (k, v) => v && rows.push(`<div class="row"><span>${k}</span><b>${v}</b></div>`);
+    if (e.kind === 'villager') {
+      const c = e.c;
+      add('🏠', c.visitor ? (c.from ? 'wohnt z ' + c.from : 'Bsuech') + (e.home ? ' · parkiert bim ' + e.home.name : '') : e.home && 'wohnt ' + (e.home.addr ? 'a de ' + e.home.addr : 'im ' + e.home.name));
+      add('👀', doing(e));
+      if (c.rel) add('💛', c.rel);
+      const mates = L.filter((v) => v !== e && v.kind === 'villager' && v.home === e.home && !v.c.visitor && !c.visitor).map((v) => v.name);
+      if (mates.length) add('👥', 'wohnt mit ' + mates.join(', '));
+      const pets = L.filter((a) => a.kind === 'dog' && a.owner === e).map((a) => a.name);
+      if (pets.length) add('🐾', pets.join(' und '));
+      if (c.about) add('ℹ️', c.about);
+    } else if (e.kind === 'dog') {
+      add('🏠', 'ghört de ' + e.owner.name); add('👀', doing(e)); if (e.a.about) add('ℹ️', e.a.about);
+    } else if (e.kind === 'cat') {
+      add('🏠', e.a.area === 'hof' ? 'wohnt uf em Hof bi de Mige' : 'streunt ' + placeName(e.a.area)); add('👀', doing(e)); if (e.a.about) add('ℹ️', e.a.about);
+    } else if (e.kind === 'firefighter') {
+      add('🏠', 'Füürwehr Niederwil'); add('👀', doing(e));
+    } else add('👀', doing(e));
+    return `<div class="title">${ICON[e.type === 'tractor' ? 'tractor' : e.kind] || '•'} ${e.name}</div>${rows.join('')}`;
+  }
+  let cardFor = null, cardT = 0;
+  U.showCard = function (e) {
+    cardFor = e; cardT = 0;
+    const el = document.getElementById('card'); if (!el) return;
+    el.classList.toggle('hidden', !e);
+    if (e) document.getElementById('cardbody').innerHTML = cardHtml(e);
+  };
+  U.updateCard = function (dt) {
+    if (!cardFor) return;
+    if (cardFor.done) { U.showCard(null); return; }
+    if ((cardT -= dt) > 0) return;
+    cardT = 0.5; document.getElementById('cardbody').innerHTML = cardHtml(cardFor);
+  };
+
   U.initDom = function (actions) {
     const muteBtn = document.getElementById('mute');
     const setMuteLabel = () => { muteBtn.textContent = NB.Audio.muted ? '🔇' : '🔊'; muteBtn.title = NB.Audio.muted ? 'Ton aa' : 'Ton us'; };
     setMuteLabel();
     muteBtn.addEventListener('click', () => { NB.Audio.unlock(); NB.Audio.setMuted(!NB.Audio.muted); setMuteLabel(); });
     document.getElementById('centre').addEventListener('click', actions.centre);
+    document.getElementById('cardclose').addEventListener('click', () => actions.unfollow());
+    const fp = document.getElementById('found');
+    document.getElementById('discover').addEventListener('click', () => fp.classList.toggle('hidden'));
+    document.getElementById('foundclose').addEventListener('click', () => fp.classList.add('hidden'));
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape') { actions.unfollow(); fp.classList.add('hidden'); } });
+    renderFound();
     document.getElementById('findcat').addEventListener('click', () => { NB.Audio.unlock(); actions.findCat(); });
     document.getElementById('zoomin').addEventListener('click', () => actions.zoom(0.8));
     document.getElementById('zoomout').addEventListener('click', () => actions.zoom(1.25));

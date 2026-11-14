@@ -852,6 +852,7 @@
     walk1: ['..........bbb.', '.........bbbbb', 'wb.......bbweb', '.bb......bwwwn', '..bbbbbbbbwwwn', '..bbbbbbbwwww.', '..wbbbbbbbww..', '..ww.ww..ww.ww', '..ww.ww..ww.ww', '..ww.ww..ww.ww'],
     walk2: ['..........bbb.', '.........bbbbb', 'wb.......bbweb', '.bb......bwwwn', '..bbbbbbbbwwwn', '..bbbbbbbwwww.', '..wbbbbbbbww..', '.ww...ww.ww..w', '.ww...ww..ww.w', 'ww....ww..ww..'],
     sit: ['..........bbb.', '.........bbbbb', '.........bbweb', '.........bwwwn', '......bbbbwwwn', '....bbbbbbwww.', '..wbbbbbbbww..', '..wbbbbbbwww..', '..wwbbb..ww...', '..wwww...ww...'],
+    sniff: ['..............', '..............', 'wb............', '.bb...........', '..bbbbbbbbbb..', '..bbbbbbbbbbbb', '..wbbbbbbbbweb', '..ww.ww..ww.wn', '..ww.ww..ww...', '..ww.ww..ww...'],
     lie: ['..............', '..............', '..............', '..........bbb.', '.........bbbbb', 'wb.......bbweb', '.bbbbbbbbbwwwn', '..bbbbbbbbwwwn', '.wwbbbbbbwwww.', '.wwww....wwww.'],
   };
   // ---------- small grey street dog (Kuba): scruffy, one ear up and one floppy, red collar; four views ----------
@@ -886,7 +887,7 @@
     const legless = (rows, near) => (L.missing === 'frontLeft' ? drop(rows, near ? [12, 13] : [9, 10]) : rows);
     const mk = (rows, o) => ({ right: I.rows(legless(rows, false), colorOf, o), left: flipRec(I.rows(legless(rows, true), colorOf, o)) });
     const o = { shadowW: 12, shadowH: 1.8 };
-    return { walk: [mk(DOG.walk1, o), mk(DOG.walk2, o)], stand: mk(DOG.walk1, o), sit: mk(DOG.sit, o), lie: mk(DOG.lie, { shadowW: 13, shadowH: 1.6 }) };
+    return { walk: [mk(DOG.walk1, o), mk(DOG.walk2, o)], stand: mk(DOG.walk1, o), sit: mk(DOG.sit, o), sniff: mk(DOG.sniff, o), lie: mk(DOG.lie, { shadowW: 13, shadowH: 1.6 }) };
   };
 
   // ---------- cats (drawn facing right) ----------

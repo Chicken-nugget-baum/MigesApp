@@ -35,6 +35,16 @@
   const startZoom = cam.zoom;
   function resetCam() { setCentre(start[0], start[1]); cam.zoom = startZoom; }
   resetCam();
+  // the view from the last visit (unless the URL asks for a place / zoom)
+  const saved = NB.UI.store.get('cam', null);
+  if (saved && !NB.params.get('at') && !NB.params.get('zoom') && ZOOMS.includes(saved.zoom)) { setCentre(saved.x, saved.z); cam.zoom = saved.zoom; }
+  let saveT = 0, savedKey = '';
+  function saveCam(dt) {
+    if ((saveT -= dt) > 0) return;
+    saveT = 1;
+    const [x, z] = I.pxToWorld(cam.px, cam.py), key = Math.round(x) + ',' + Math.round(z) + ',' + cam.zoom;
+    if (key !== savedKey) { savedKey = key; NB.UI.store.set('cam', { x: Math.round(x), z: Math.round(z), zoom: cam.zoom }); }
+  }
 
   // ---------- buildings: snapped boxes in the (u, v) frame, drawn back to front ----------
   const blds = S.buildings.map((spec, i) => {
@@ -647,8 +657,8 @@
   function tapAt(sx, sy) {
     NB.Audio.unlock();
     const h = pick(sx, sy);
-    if (!h) return;
-    if (h.entity) h.entity.click();
+    if (!h) { follow = null; NB.UI.showCard(null); return; } // a tap on empty ground lets go
+    if (h.entity) { h.entity.click(); follow = h.entity; NB.UI.showCard(h.entity); } // the camera follows, the card shows who it is
     else if (h.building) clickBuilding(h.building);
     else if (h.info) { const n = clickCount.get(h.info) || 0; clickCount.set(h.info, n + 1); NB.UI.say(h.info.top, h.info.lines[n % h.info.lines.length]); NB.Audio.play(h.info.sound, { pos: h.info.top }); }
   }
@@ -715,11 +725,17 @@
     catIdx = (catIdx + 1) % cats.length;
     follow = cats[catIdx];
     NB.UI.say(follow, '🐾 ' + follow.name, { life: 2.5 });
+    NB.UI.showCard(follow);
   }
   NB.follow = (e) => { follow = e || null; }; // console / tests: camera follows any entity or {x, z}
   function updateFollow(dt) {
     if (!follow) return;
     if (follow.done) { follow = null; return; }
+    if (follow.away && follow.kind === 'villager') { // gone off in a car: keep watching the car
+      const t = NB.Entities.visits.concat(NB.Entities.outings).find((v) => (v.members || (v.trip && v.trip.members.map((id) => NB.Entities.list.find((e) => e.c && e.c.id === id))) || []).includes(follow)), car = t && (t.car || t.cruiser);
+      if (!car || car.done) return;
+      const p = I.project(car.x, 0, car.z), k = Math.min(1, dt * 3); cam.px += (p[0] - cam.px) * k; cam.py += (p[1] - cam.py) * k; return;
+    }
     const p = I.project(follow.x, 0, follow.z), k = Math.min(1, dt * 3);
     cam.px += (p[0] - cam.px) * k; cam.py += (p[1] - cam.py) * k;
   }
@@ -741,11 +757,11 @@
     const dt = NB.clamp(dtMs / 1000, 0, 0.05);
     frameNo++;
     updateDairy(dt);
-    updateFollow(dt); clampCam(); applyCamera();
+    updateFollow(dt); clampCam(); applyCamera(); saveCam(dt);
     updateView();
     NB.Env.update(dt);
     NB.Entities.update(dt);
-    NB.UI.update(dt);
+    NB.UI.update(dt); NB.UI.updateCard(dt);
     NB.Audio.update(dt, NB.Env);
     updateGround(); updateSky(); updateWeather(dt);
     NB.UI.draw(uctx);
@@ -763,6 +779,7 @@
     NB.Entities.init();
     NB.UI.initDom({
       centre: () => { follow = null; resetCam(); },
+      unfollow: () => { follow = null; NB.UI.showCard(null); },
       findCat,
       zoom: (f) => zoomStep(f < 1 ? 1 : -1),
     });

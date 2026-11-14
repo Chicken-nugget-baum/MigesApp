@@ -19,8 +19,12 @@
       <button id="findcat" class="pill" title="Wo isch Luna?">🐱</button>
       <button id="centre" class="pill" title="Zur Bushaltestell">⌂</button>
       <button id="mute" class="pill" title="Ton">🔊</button>
+      <button id="discover" class="pill" title="Entdeckige">✨</button>
     </div>
   </div>
+  <div id="card" class="panel hidden"><button id="cardclose" class="x" title="Zue (Esc)">×</button><div id="cardbody"></div></div>
+  <div id="found" class="panel hidden"><button id="foundclose" class="x" title="Zue">×</button><div class="title">✨ Entdeckige</div><ul id="foundlist"></ul></div>
+  <div id="toast"></div>
 
   <div id="intro">
     <div class="card">
@@ -44,6 +48,11 @@
   <script src="js/models.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/env.js"></script>
+  <script src="js/entities/core.js"></script>
+  <script src="js/entities/vehicles.js"></script>
+  <script src="js/entities/animals.js"></script>
+  <script src="js/entities/villagers.js"></script>
+  <script src="js/entities/events.js"></script>
   <script src="js/entities.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/data/characters.js"></script>

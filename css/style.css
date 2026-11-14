@@ -36,6 +36,29 @@ button.pill { cursor: pointer; min-width: 38px; }
 button.pill:hover { background: rgba(60, 48, 80, 0.9); }
 #clock { font-size: 18px; }
 
+#hud .buttons { flex-wrap: wrap; justify-content: flex-end; }
+.panel {
+  position: fixed; left: 12px; bottom: 12px; width: min(320px, calc(100vw - 24px)); max-height: 60vh; overflow: auto;
+  background: rgba(255, 246, 220, 0.96); color: var(--ink); border-radius: 16px; padding: 12px 14px 12px;
+  box-shadow: 0 10px 30px rgba(30, 20, 50, 0.35); font-size: 14px; line-height: 1.35;
+}
+.panel.hidden { display: none; }
+.panel .title { font-weight: 800; font-size: 18px; margin: 0 26px 6px 0; color: var(--accent); }
+.panel .row { display: flex; gap: 8px; padding: 2px 0; }
+.panel .row span { flex: 0 0 22px; text-align: center; }
+.panel .row b { font-weight: 700; }
+.panel .x { position: absolute; top: 6px; right: 8px; border: 0; background: none; font: 800 22px 'Nunito', sans-serif; color: var(--ink); cursor: pointer; opacity: 0.6; }
+.panel .x:hover { opacity: 1; }
+#found { left: auto; right: 12px; top: 60px; bottom: auto; }
+#found ul { list-style: none; margin: 0; padding: 0; }
+#found li { padding: 3px 0; display: flex; gap: 8px; }
+#found li.locked { opacity: 0.55; font-style: italic; }
+#toast {
+  position: fixed; left: 50%; top: 64px; transform: translate(-50%, -20px); opacity: 0; transition: opacity 0.3s, transform 0.3s; pointer-events: none;
+  background: var(--accent); color: var(--paper); padding: 8px 16px; border-radius: 999px; font-weight: 800; box-shadow: 0 6px 18px rgba(30, 20, 50, 0.3); white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+
 #intro {
   position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;
   background: radial-gradient(ellipse at center, rgba(60, 80, 110, 0.35), rgba(30, 40, 70, 0.7));

@@ -53,7 +53,7 @@ NB.Data.characters = [
   // ---------------- family ----------------
   // Mige: pink long hair, black shirt, jeans. Lives in the Buurehuus (Niederwilerstrasse 3) with Mina and Luna.
   {
-    id: 'mige', name: 'Mige', home: 'buurehuus', cycle: true,
+    id: 'mige', name: 'Mige', home: 'buurehuus', cycle: true, rel: 'Mina und Luna sind ihri Chatze', about: 'Pinki Hoor. Vibe-codet mit em Joel.',
     look: { skin: '#f1c7a0', hair: '#ff7ac8', hairStyle: 'long', shirt: '#1f1d22', pants: '#3f68a8', shoes: '#f4f1ea' },
     voice: 1.3, favorites: ['sitzplatz', 'hof', 'dorfplatz'],
     routine: [{ at: '07:30', go: 'hof' }, { at: '08:30', go: 'home:buurehuus' }, { at: '12:00', go: 'sitzplatz' }, { at: '13:00', go: 'home:buurehuus' }, { at: '17:30', go: 'dorfplatz' }, { at: '18:30', go: 'hof' }, { at: '19:15', go: 'sitzplatz' }, { at: '21:00', go: 'home:buurehuus' }],
@@ -127,7 +127,7 @@ NB.Data.characters = [
   // Dry, short sentences, half his mind on code (vibe coding), coffee by day, beer at the Beiz, soft spot for Luna.
   // Pretends not to like "Joelito Papacito" but answers to it.
   {
-    id: 'joel', name: 'Joel', home: 'buurehuus', visitor: true, cycle: true,
+    id: 'joel', name: 'Joel', home: 'buurehuus', visitor: true, cycle: true, from: 'Lenzburg', rel: 'Fründ vo de Mariana · Sohn vo de Iris · Brüeder vom Yves', about: 'Kafi am Tag, Bier am Abig, Code immer.',
     look: { skin: '#eec1a0', hair: '#6b4226', hairStyle: 'short', glasses: true, shirt: '#f4f3ee', pants: '#26324a', shoes: '#2a2a2a' },
     voice: 0.85, favorites: ['sitzplatz', 'hof', 'beiz'],
     routine: [{ at: '07:30', go: 'sitzplatz' }, { at: '10:00', go: 'hof' }, { at: '10:45', go: 'terrasse' }, { at: '12:15', go: 'sitzplatz' }, { at: '13:30', go: 'home:buurehuus' }, { at: '15:00', go: 'fischerplatz', do: 'fish' }, { at: '17:30', go: 'beiz' }, { at: '19:00', go: 'sitzplatz' }],
@@ -136,6 +136,13 @@ NB.Data.characters = [
     clicks: ['Vibe Code forever! 💻', 'Ich bi nid Joelito. … Okay, chli.', 'Momänt, nur no schnäll es Feature.', 'Dörfi de Luna en Snack geh?', 'Mige – gits en Zigi?', 'Es Bier? Jo. Es Kafi? Au.'],
     random: ['Das chönnt mer automatisiere.', 'De Mini het no 80 Prozänt, langet für Lenzburg.', 'Mariana, nid so lut, de Weiher-Buur…', 'Kafi. Denn Code. Denn Bier.', 'Brüederli, zocke isch nid schaffe.'],
     night: ['No ei Commit, denn fahre mer.', 'Mige – gits en Zigi?'],
+    // when Manolo runs off: calming Mariana (works only sometimes), searching along, "told you so"
+    partner: 'mariana',
+    calmLines: ['Schatz, ruhig. De %d chunnt immer zrugg.', 'Mariana, er macht nur sis Ding. Er isch en Hund.', 'Er schmöckt sicher nur Ente. Chill.', 'Trink zerscht en Kafi. Er chunnt.'],
+    searchAlongLines: ['Okay, okay. Ich chume mit.', 'Jo guet… %d! Komm!', 'Ich nimm d\'Guetzli mit.'],
+    stayReplies: ['Gsehsch. Alles guet.', 'Er isch gross. Er findet hei.'],
+    backReplies: ['Gsehsch, Schatz? Er chunnt immer zrugg.', 'Ha der\'s jo gseit.', 'De %d het nur Hunger becho.'],
+    foundOtherLines: ['Mariana! Ich ha ihn – de %d isch do!', '%o, er isch do! Bim Weiher. Natürlich.'],
     // fishing at the Löli-Weiher (secretly – the Weiher-Buur chases them away)
     fishLines: ['Psst, de Weiher-Buur dörf üs nid gseh!', 'Hüt biisst sicher eine.', 'Mariana, lueg, de Schwimmer!', 'So ruhig. Fasch wie Code ohni Bugs.'],
     biteLines: ['Es biisst!', 'Ha eine! 🐟', 'Ui, en Grosse!', 'Mist, abghaue. Wie en Bug.'],
@@ -147,7 +154,7 @@ NB.Data.characters = [
   // emotion (¡No manches! ¡Chintrolletta! ¡Órale!). Always cold here, cooks tacos for everyone, phones her parents a lot.
   // Look: dark skin, long black hair with a flower, hoop earrings, embroidered blouse in rosa mexicano.
   {
-    id: 'mariana', name: 'Mariana', home: 'buurehuus', visitor: true, cycle: true,
+    id: 'mariana', name: 'Mariana', home: 'buurehuus', visitor: true, cycle: true, from: 'Lenzburg', rel: 'Fründin vom Joel', about: 'Us Ocotlán und Guadalajara 🇲🇽 · schafft bi de Tortillería «Mas Amor» z Züri.',
     look: { skin: '#c98a5e', hair: '#1c1210', hairStyle: 'long', flower: '#ff4f7a', earrings: true, shirt: '#e4007c', bands: ['#ffd23f', '#2fbf71'], pants: '#3a3f55', shoes: '#f4f1ea' },
     voice: 1.35, favorites: ['sitzplatz', 'hof', 'weiher'],
     routine: [{ at: '07:30', go: 'sitzplatz' }, { at: '10:00', go: 'hof' }, { at: '10:45', go: 'terrasse' }, { at: '12:15', go: 'sitzplatz' }, { at: '13:30', go: 'home:buurehuus' }, { at: '15:00', go: 'fischerplatz', do: 'fish' }, { at: '17:30', go: 'sitzplatz' }],
@@ -161,13 +168,23 @@ NB.Data.characters = [
     fishLines: ['Joelito, du machsch z\'vill Lärm! ¡Silencio!', 'So schön ruhig do am Weiher… geil.', 'Ha eine! …nei, nur Alge. ¡Chintrolletta!', 'Chunnt de Weiher-Buur? ¡Cuidado!'],
     biteLines: ['¡Órale! Geil, de isch riesig!', 'Joelito Papacito, lueg, min isch grösser!', 'Es zieht! ¡Rápido!'],
     caughtLines: ['¡Chintrolletta! Joelito, renn!', '¡No manches! Mir sind scho wäg!', '¡Córrele, Papacito!'],
+    // Manolo ran off again (%d = the dog): she notices, worries, decides to look for him (or to wait), calls, finds him
+    partner: 'joel',
+    lostLines: ['¿%d? ¡¿MANOLO?! Joelito, wo isch de %d?!', '¡No manches! De %d isch scho wider wäg!', '¡Ay, Dios mío! %d! ¡Ven aquí!'],
+    searchLines: ['Nei, Joelito, ich gang ihn jetzt go sueche! ¡Vámonos!', 'Mir gönd ihn go sueche. Sofort!', 'Ich cha nöd eifach do sitze! Gömmer!'],
+    stayLines: ['…okay, Joelito. Aber wenn er in föif Minute nöd do isch…', 'Bueno… er chunnt sicher. ¿Verdad?', 'Okay. Aber ich luege jedi Minute.'],
+    worryLines: ['¿Dónde está mi bebé?', 'Joelito, er isch immer no nöd do…', 'Morgan, wo isch din Brüeder?', '¡%d! … Nüt.'],
+    callLines: ['¡%d! ¡MANOLO!', '¡%d, ven aquí!', 'Manolito! ¡Galletas!', '¡%d! ¿Dónde estás?'],
+    foundLines: ['¡%d! ¡Aquí estás! Du chline Chintrolletta!', '¡Ahí está! %d, nie meh devo laufe!'],
+    foundBackLines: ['Gracias a Dios… Nie meh, %d. ¡Nunca más!', 'Geil, alli wider binenand. 💛'],
+    backLines: ['¡%d! ¡Gracias a Dios! Wo bisch du gsi?!', 'Do isch er! Ganz eleige zrugg cho. ¡Mi bebé!', '%d! Du schmöcksch nach Weiher… ¡qué asco!'],
     // when Karin's Kuba barks at Manolo and Morgan / when Karin greets her
     meetReplies: ['¡Hola Karin! Kuba, no manches, so lut!', 'Hoi Karin! De Manolo und de Morgan händ de Kuba gern. Geil!', 'Karin! ¡Qué lindo! De Kuba isch so herzig.'],
     karinLines: ['¡Hola Karin! Hoi Kuba!', 'Hoi Karin! Geil, d\'Gassirundi!'],
   },
   // Iris: Joel's and Yves's mother. Lives at Ifangweg 15 (h31). Yves is there a lot; Joel and Mariana drop by.
   {
-    id: 'iris', name: 'Iris', home: 'h31', cycle: true,
+    id: 'iris', name: 'Iris', home: 'h31', cycle: true, rel: 'Mueter vom Joel und vom Yves', about: 'Am liebschte im Garte.',
     look: { skin: '#f1c7a0', hair: '#a8763e', hairStyle: 'long', shirt: '#7b5ea7', pants: '#3a3f55', shoes: '#4a3a30' },
     voice: 1.2, favorites: ['garte', 'terrasse', 'dorfplatz', 'kuerbismarkt', 'kapelle'],
     // most of her day is in her garden: watering the beds in the morning and afternoon, coffee on the terrace,
@@ -182,7 +199,7 @@ NB.Data.characters = [
   },
   // Yves: Joel's brother. Lives in Mellingen, comes over with the Postauto most days to see Iris (and Mige).
   {
-    id: 'yves', name: 'Yves', home: 'h31', visitor: true, cycle: true,
+    id: 'yves', name: 'Yves', home: 'h31', visitor: true, cycle: true, from: 'Mellingen', rel: 'Brüeder vom Joel · Sohn vo de Iris', about: 'Chunnt am Tag mit em Postauto.',
     look: { skin: '#eec1a0', hair: '#4a3220', hairStyle: 'short', shirt: '#2a2a2e', pants: '#3a5f9a', shoes: '#f4f1ea' },
     voice: 0.9, favorites: ['ifangweg', 'hof', 'beiz', 'bushalt'],
     routine: [{ at: '09:00', go: 'terrasse' }, { at: '12:00', go: 'home:h31' }, { at: '13:30', go: 'ifangweg' }, { at: '15:00', go: 'terrasse' }, { at: '17:00', go: 'beiz' }, { at: '18:30', go: 'hof' }, { at: '19:15', go: 'sitzplatz' }, { at: '20:15', go: 'home:h31' }],
@@ -194,7 +211,7 @@ NB.Data.characters = [
   },
   // André Koch (Ifangweg 23): plays boule on the court in front of his house, drives an old army jeep.
   {
-    id: 'andre', name: 'André Koch', home: 'h84', cycle: true,
+    id: 'andre', name: 'André Koch', home: 'h84', cycle: true, about: 'Fahrt en alte Armee-Jeep und spielt Boule.',
     look: { skin: '#e8b890', hair: '#a8a8a8', hairStyle: 'cap', cap: '#5b6b3a', beard: true, shirt: '#6b7a4a', pants: '#3a4a6a', shoes: '#3a2e24' },
     voice: 0.75, favorites: ['boule', 'beiz', 'dorfplatz'],
     routine: [{ at: '07:00', go: 'home:h84' }, { at: '10:30', go: 'boule', do: 'boule' }, { at: '12:00', go: 'home:h84' }, { at: '16:30', go: 'boule', do: 'boule' }, { at: '18:00', go: 'beiz' }, { at: '19:15', go: 'home:h84' }],
@@ -208,7 +225,7 @@ NB.Data.characters = [
   },
   // Monika Koch (Ifangweg 23): tends her hydrangeas, loves the Gärtnerei Gisler in Niederwil.
   {
-    id: 'monika', name: 'Monika Koch', home: 'h84', cycle: true,
+    id: 'monika', name: 'Monika Koch', home: 'h84', cycle: true, about: 'Liebt Hortensie vom Gisler.',
     look: { skin: '#f1c7a0', hair: '#d9b26a', hairStyle: 'bun', shirt: '#f2a7c3', pants: '#5a6a8a', shoes: '#f4f1ea', apron: '#6aa35a', flower: '#7f9fe8' },
     voice: 1.15, favorites: ['hortensien', 'boulebank', 'kapelle'],
     routine: [{ at: '07:30', go: 'hortensien', do: 'garden' }, { at: '08:30', go: 'home:h84' }, { at: '11:00', go: 'hortensien', do: 'garden' }, { at: '12:00', go: 'home:h84' }, { at: '16:30', go: 'boulebank' }, { at: '18:00', go: 'hortensien', do: 'garden' }, { at: '19:00', go: 'home:h84' }],
@@ -233,7 +250,7 @@ NB.Data.characters = [
   // The Gehrigs: Silvia, Roman and Reto own and run the Milchzentrale at Kapellenweg 1 (milk collection + cheese
   // dairy, they live above it). It burned down recently and has been rebuilt.
   {
-    id: 'silvia', name: 'Silvia Gehrig', home: 'milch', cycle: true,
+    id: 'silvia', name: 'Silvia Gehrig', home: 'milch', cycle: true, rel: 'Familie Gehrig, Milchzentrale',
     look: { skin: '#f1c7a0', hair: '#6b4a32', hairStyle: 'bun', shirt: '#ffffff', pants: '#3a3f55', apron: '#ffffff', shoes: '#f4f1ea' },
     voice: 1.25, favorites: ['milchzentrale', 'dorfplatz', 'kapelle'],
     routine: [{ at: '05:30', go: 'home:milch' }, { at: '09:30', go: 'dorfplatz' }, { at: '10:30', go: 'home:milch' }, { at: '14:00', go: 'milchzentrale' }, { at: '14:30', go: 'home:milch' }, { at: '18:30', go: 'milchzentrale' }, { at: '19:30', go: 'home:milch' }],
@@ -243,7 +260,7 @@ NB.Data.characters = [
     night: ['Morn am halbi sächsi gaht\'s wider los.'],
   },
   {
-    id: 'roman', name: 'Roman Gehrig', home: 'milch', cycle: true,
+    id: 'roman', name: 'Roman Gehrig', home: 'milch', cycle: true, rel: 'Familie Gehrig, Milchzentrale',
     look: { skin: '#e8b890', hair: '#4a3220', hairStyle: 'short', shirt: '#ffffff', pants: '#2a2a3a', apron: '#ffffff', shoes: '#2a2a2a' },
     voice: 0.8, favorites: ['milchzentrale', 'beiz'],
     routine: [{ at: '05:15', go: 'home:milch' }, { at: '12:00', go: 'milchzentrale' }, { at: '12:45', go: 'home:milch' }, { at: '18:45', go: 'beiz' }, { at: '20:30', go: 'home:milch' }],
@@ -253,7 +270,7 @@ NB.Data.characters = [
     night: ['Alles us? Chessi us? Guet.'],
   },
   {
-    id: 'reto', name: 'Reto Gehrig', home: 'milch', cycle: true,
+    id: 'reto', name: 'Reto Gehrig', home: 'milch', cycle: true, rel: 'Familie Gehrig, Milchzentrale',
     look: { skin: '#eec1a0', hair: '#8a6a4a', hairStyle: 'cap', cap: '#ffffff', shirt: '#dfe3e8', pants: '#3a5f9a', shoes: '#2a2a2a' },
     voice: 0.9, favorites: ['milchzentrale', 'unterdorf', 'beiz'],
     routine: [{ at: '05:45', go: 'milchzentrale' }, { at: '06:30', go: 'home:milch' }, { at: '10:00', go: 'unterdorf' }, { at: '11:00', go: 'home:milch' }, { at: '17:30', go: 'milchzentrale' }, { at: '18:30', go: 'home:milch' }, { at: '19:30', go: 'beiz' }, { at: '21:00', go: 'home:milch' }],
@@ -266,7 +283,7 @@ NB.Data.characters = [
   // knows everyone in the village. Walks Kuba on the same loop several times a day (do: 'walk' = map.gassi) and
   // greets everyone she passes; when Kuba barks at another dog, she stops and chats with its owner.
   {
-    id: 'karin', name: 'Karin', home: 'h95', shuffle: true,
+    id: 'karin', name: 'Karin', home: 'h95', shuffle: true, about: 'Fröhlich, gspröchig und kennt s ganze Dorf.',
     look: { skin: '#f0c4a0', hair: '#7a4a2a', hairStyle: 'capPony', cap: '#2f8a4a', shirt: '#2f8a4a', pants: '#2f8a4a', stripes: '#ffffff', shoes: '#f4f4f0' },
     voice: 1.3, favorites: ['dorfplatz', 'hof'],
     routine: [{ at: '06:45', go: 'gassi', do: 'walk' }, { at: '07:45', go: 'home:h95' }, { at: '10:00', go: 'dorfplatz' }, { at: '11:00', go: 'home:h95' }, { at: '12:15', go: 'gassi', do: 'walk' },
@@ -290,7 +307,7 @@ NB.Data.characters = [
   // De Hirschbuur: runs the Hirschfarm behind Niederwilerstrasse 21.1 (lives at Niederwilerstrasse 21): feeds the deer
   // morning and evening, sells pumpkins at the stand by the street (the big Kürbismarkt in autumn).
   {
-    id: 'hirschbuur', name: 'De Hirschbuur', home: 'h88',
+    id: 'hirschbuur', name: 'De Hirschbuur', home: 'h88', about: 'Hirschfarm und Kürbismärt.',
     look: { skin: '#e8b890', hair: '#7a5a3a', hairStyle: 'cap', cap: '#4a6a3a', shirt: '#6a8a5a', pants: '#4a4038', shoes: '#2a2a2a' },
     voice: 0.75, favorites: ['verkauf', 'hirschgehege', 'fuettern', 'beiz'],
     routine: [{ at: '06:30', go: 'fuettern' }, { at: '07:00', go: 'home:h88' }, { at: '09:00', go: 'verkauf' }, { at: '12:00', go: 'home:h88' }, { at: '13:30', go: 'verkauf' }, { at: '17:00', go: 'fuettern' }, { at: '17:45', go: 'home:h88' }, { at: '19:00', go: 'beiz' }, { at: '20:30', go: 'home:h88' }],
