@@ -409,6 +409,45 @@
     return rows;
   };
 
+  // Karin's Gassirunde with Kuba (from Niederwilerstrasse 4), always the same loop: up the Niederwilerstrasse past the
+  // Buurehuus to the Kapellenweg junction, on to the Dorfplatz, then the whole Ifangweg back down. Waypoints every
+  // ~8 m on the road edge; `stop`: Kuba sniffs around there for a while
+  {
+    const near = (p, q, r) => Math.hypot(p[0] - q[0], p[1] - q[1]) < r;
+    const If = S.streets.find((s) => s.name === 'Ifangweg');
+    const iA = If && If.pts[0], iB = If && If.pts[If.pts.length - 1];
+    const A = If && S.streets.find((s) => s.name === 'Niederwilerstrasse' && s.pts.some((p) => near(p, iB, 1)));
+    const J = A && A.pts[0];
+    const B = A && S.streets.find((s) => s !== A && s.name === 'Niederwilerstrasse' && s.pts.some((p) => near(p, J, 1)) && s.pts.some((p) => near(p, iA, 8)));
+    const seg = (pts, a, b) => {
+      const idx = (q) => pts.reduce((bi, p, i) => (Math.hypot(p[0] - q[0], p[1] - q[1]) < Math.hypot(pts[bi][0] - q[0], pts[bi][1] - q[1]) ? i : bi), 0);
+      const ia = idx(a), ib = idx(b);
+      return ia <= ib ? pts.slice(ia, ib + 1) : pts.slice(ib, ia + 1).reverse();
+    };
+    if (B) {
+      const line = seg(A.pts, iB, J).concat(seg(B.pts, J, iA), If.pts.slice(0, -1));
+      const loop = [];
+      for (let i = 0; i < line.length; i++) {
+        const [ax, az] = line[i], [bx, bz] = line[(i + 1) % line.length], dx = bx - ax, dz = bz - az, l = Math.hypot(dx, dz);
+        if (l < 0.5) continue;
+        const nx = dz / l, nz = -dx / l; // the right-hand road edge
+        for (let u = 0; u < l; u += 8) {
+          const x = ax + (dx * u) / l, z = az + (dz * u) / l;
+          let o = 0;
+          for (let k = 0.5; k <= 6; k += 0.5) { const sd = map.streetDist(x + nx * k, z + nz * k); if (sd >= 0.1) { o = k; break; } }
+          const px = x + nx * o, pz = z + nz * o, [cx, cz] = map.toCell(px, pz);
+          loop.push(map.inB(cx, cz) && map.walkCost[cz * W + cx] > 0 ? { x: px, z: pz } : { x, z });
+        }
+      }
+      for (const poi of ['hof', 'dorfplatz', 'ifangweg']) {
+        const a = map.pois[poi]; if (!a) continue;
+        const cx = (a[0] + a[2]) / 2, cz = (a[1] + a[3]) / 2;
+        loop.reduce((b, w) => (Math.hypot(w.x - cx, w.z - cz) < Math.hypot(b.x - cx, b.z - cz) ? w : b)).stop = poi;
+      }
+      map.gassi = loop;
+    }
+  }
+
   map.randomIn = function (area, cost) {
     const a = typeof area === 'string' ? map.pois[area] : area;
     if (!a) return null;

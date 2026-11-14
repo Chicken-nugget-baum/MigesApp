@@ -97,6 +97,7 @@
       const g = this.currentGoal(), home = this.home;
       this.goalKey = null; this.path = null;
       if (g.place === 'home' || g.place.startsWith('home:')) { this.target = this.homeOf(g.place) || home; this.enter(); }
+      else if (g.act === 'walk' && map.gassi) { const w = NB.pick(map.gassi); this.x = w.x; this.z = w.z; }
       else { const s = claimSpot(this, g.place); if (s) { this.x = s.x; this.z = s.z; if (s.sit) { this.seated = true; this.heading = s.face; } } }
     }
     // ---- visitors: arrive with the car, walk back to it when it is time to go ----
@@ -179,6 +180,10 @@
       const now = performance.now() / 1000;
       if (this.away) return this.pose(dt);
       if (this.hop > 0) this.hop = Math.max(0, this.hop - dt);
+      if (this.later && (this.later.t -= dt) <= 0) { // an answer a moment later (someone greeted us)
+        const l = this.later.line; this.later = null;
+        if (!this.inside) { say(this, l, { quiet: true }); if (NB.UI.onScreen(this)) NB.Audio.babble(l, this.c.voice, { pos: this, vol: 0.6 }); }
+      }
       if (this.fled && now >= this.fled.until) this.fled = null;
       if (this.guarding && now >= this.guarding.until) this.guarding = null;
       if (this.c.guard && !this.guarding && !this.fled) {
@@ -193,17 +198,21 @@
       const g = this.currentGoal();
       const building = this.homeOf(g.place);
       if (g.place !== this.goalKey) {
-        this.goalKey = g.place; this.target = building; this.path = null; this.act = g.act || null; this.fishing = null; this.gardenT = null; this.waterT = 0;
+        this.goalKey = g.place; this.target = building; this.path = null; this.act = g.act || null; this.fishing = null; this.gardenT = null; this.waterT = 0; this.sniffT = 0;
         if (map.bouleGame && map.bouleGame.by === this) map.bouleGame.fly = null;
         releaseSpot(this);
         if (this.inside && this.inBuilding !== building) this.leave();
         if (!this.inside) {
           if (building) this.goTo(building.entryPt.x, building.entryPt.z);
           else if (g.pt) this.goTo(g.pt.x, g.pt.z);
-          else { const t = claimSpot(this, g.place); if (t) this.goTo(t.x, t.z); }
+          else if (this.act === 'walk' && map.gassi) { // join the loop at the nearest waypoint
+            const W = map.gassi; this.walkIdx = W.reduce((b, w, i) => (Math.hypot(w.x - this.x, w.z - this.z) < Math.hypot(W[b].x - this.x, W[b].z - this.z) ? i : b), 0); this.stopped = true;
+            this.goTo(W[this.walkIdx].x, W[this.walkIdx].z);
+          } else { const t = claimSpot(this, g.place); if (t) this.goTo(t.x, t.z); }
         }
       }
       if (this.inside) return this.pose(dt);
+      if (this.act === 'walk' && map.gassi) this.walkTalk(dt);
       const done = this.stepPath(dt);
       if (done) {
         if (building) {
@@ -217,6 +226,8 @@
           this.updateBoule(dt);
         } else if (this.act === 'garden') {
           this.updateGarden(dt);
+        } else if (this.act === 'walk' && map.gassi) {
+          this.updateWalk(dt);
         } else if (g.place === 'fire' && this.spot) { // watching the fire: stand, face it, comment
           this.moving = false; this.heading = this.spot.face;
           this.chatCd -= dt;
@@ -288,6 +299,37 @@
         talk(best.col === '#c9ccd6' ? ['Silber gwünnt! 🥈', 'Punkt für Silber!'] : ['Bronze gwünnt! 🥉', 'Punkt für Bronze!'], 0.8);
         g.balls = []; g.coch = null; g.wait = NB.rr(6, 10);
       }
+    }
+    // ---- the Gassirunde (routine entry with do: 'walk'): follow map.gassi waypoint by waypoint, round and round;
+    //      at a `stop` the dog sniffs around for a while. Greets everyone she passes (she knows them all) ----
+    walkTalk(dt) {
+      this.chatCd -= dt;
+      if (this.chatCd <= 0) {
+        this.chatCd = NB.rr(4, 8);
+        this.greeted = this.greeted || new Map();
+        const now = performance.now() / 1000;
+        const o = E.list.find((v) => v !== this && v.kind === 'villager' && !v.inside && !v.away && Math.hypot(v.x - this.x, v.z - this.z) < 6 && now - (this.greeted.get(v) || -999) > 240);
+        if (o) {
+          this.greeted.set(o, now); this.chatCd = NB.rr(20, 40);
+          const l = NB.pick(this.c.greetLines || ['Hoi %o!']).replace('%o', o.name);
+          say(this, l, { quiet: true }); if (NB.UI.onScreen(this)) NB.Audio.babble(l, this.c.voice, { pos: this, vol: 0.6 });
+          if (!o.later) o.later = { t: NB.rr(1.2, 2.2), line: NB.pick(o.c.karinLines || ['Hoi ' + this.name + '!', 'Sali ' + this.name + ', sali Kuba!', 'Grüezi ' + this.name + '!']) };
+        } else if (Math.random() < 0.12) this.chat();
+      }
+    }
+    updateWalk(dt) {
+      const W = map.gassi, w = W[this.walkIdx];
+      this.moving = false;
+      if (this.sniffT > 0) { this.sniffT -= dt; return; }
+      if (w.stop && !this.stopped) {
+        this.stopped = true; this.sniffT = NB.rr(7, 13); this.heading = I.towardCamera;
+        if (Math.random() < 0.5) { const l = NB.pick(this.c.sniffLines || ['Schnüffle, Kuba, schnüffle.']); say(this, l, { quiet: true }); }
+        return;
+      }
+      this.stopped = false;
+      this.walkIdx = (this.walkIdx + 1) % W.length;
+      const n = W[this.walkIdx];
+      if (!this.goTo(n.x, n.z)) this.path = [{ x: n.x, z: n.z }];
     }
     // ---- tending the hydrangeas (routine entry with do: 'garden'): water a bush, then move on to the next one ----
     updateGarden(dt) {
@@ -368,8 +410,15 @@
       const night = this.c.sleep && NB.inWindow(NB.clock.minutes(), this.c.sleep[0], this.c.sleep[1]);
       const lines = night && this.c.night ? this.c.night : this.c.clicks || ['Grüezi!'];
       this.cycleIdx = ((this.cycleIdx == null ? -1 : this.cycleIdx) + 1) % lines.length;
-      const line = this.c.cycle ? lines[this.cycleIdx] : lines[Math.min(this.clicks, lines.length - 1)];
+      let line = this.c.cycle ? lines[this.cycleIdx] : lines[Math.min(this.clicks, lines.length - 1)];
+      if (this.c.shuffle && !night) { // a random line, plus the ones that fit today's weather
+        const wl = this.c.weatherLines || {}, w = NB.Env.weather, cold = NB.season === 'winter' || w === 'snow';
+        const pool = lines.concat(w === 'clear' && NB.Env.darkness < 0.5 && !cold ? wl.sun || [] : [], ['cloudy', 'rain', 'fog'].includes(w) ? wl.rain || [] : [], cold || (NB.season === 'autumn' && w !== 'clear') ? wl.cold || [] : []).filter((l) => l !== this.lastLine);
+        line = NB.pick(pool);
+      }
+      this.lastLine = line;
       say(this, line);
+      for (const d of this.dogs || []) if (d.a.chimeIn) d.woofT = 1.1;
       NB.Audio.babble(line, this.c.voice, { pos: this });
       this.pause = 3.5; this.hop = 0.35;
       this.heading = I.towardCamera; // turn towards the viewer
@@ -417,7 +466,7 @@
       this.timer -= dt;
       if (this.timer <= 0) {
         const r = Math.random();
-        const dog = this.a.dogs && NB.Env.darkness < 0.6 ? E.list.find((o) => o.kind === 'dog' && !o.away && !o.rider && Math.hypot(o.x - this.x, o.z - this.z) < 7) : null;
+        const dog = this.a.dogs && NB.Env.darkness < 0.6 ? E.list.find((o) => o.kind === 'dog' && !o.away && !o.rider && !o.a.leash && Math.hypot(o.x - this.x, o.z - this.z) < 7) : null;
         if (dog && r < 0.35) { this.mount(dog); }
         else if (r < this.sleepy()) { this.state = 'sleep'; this.timer = NB.rr(20, 60); }
         else if (r < 0.6) {
@@ -535,7 +584,26 @@
       this.a = a; this.kind = 'dog'; this.name = a.name; this.owner = owner; this.side = a.side || 1;
       this.frames = NB.Models.dog(a.look || {}); this.sprite = new PIXI.Sprite(); this.dir = 'right';
       this.away = true; this.idleT = 0; this.replanT = 0; this.rider = null; this.barkT = NB.rr(20, 60); this.hopT = 0;
+      this.meetCd = NB.rr(5, 15); this.meetT = 0; this.woofT = 0; this.sniffAt = null; this.view = 'right';
+      (owner.dogs || (owner.dogs = [])).push(this);
       this.sprite.visible = false;
+    }
+    bark(line) {
+      say(this, line || 'Wuff!', { life: 1.6 });
+      NB.Audio.play('bark', { pos: this, vol: 0.8, rate: this.a.voice || 1 });
+      this.hopT = 0.3; this.idleT = 0;
+    }
+    // another dog in sight (Kuba, `barksAtDogs`): bark, both owners stop and chat for a few seconds, then carry on
+    meet(other) {
+      const o = this.owner, p = other.owner;
+      this.meetT = 8; this.lookAt = other; this.bark('Wuff! Wuff!'); this.woofT = 1.2;
+      other.lookAt = this; other.meetT = 8; other.woofT = 0.8;
+      if (o.inside || o.seated || o.fishing) return;
+      const dur = NB.rr(6, 9);
+      o.pause = dur; o.heading = Math.atan2(p.x - o.x, p.z - o.z); o.hop = 0;
+      o.later = { t: 0.9, line: NB.pick(o.c.meetLines || ['Hoi %o!']).replace('%o', p.name).replace('%d', other.name) };
+      if (!p.seated && !p.fishing && !p.toCar) { p.pause = dur; p.heading = Math.atan2(o.x - p.x, o.z - p.z); p.hop = 0; }
+      p.later = { t: 3.2, line: NB.pick(p.c.meetReplies || ['Hoi ' + o.name + '! Hoi ' + this.name + '!', 'Jo, de ' + this.name + ' isch wider bi Stimm!']) };
     }
     clear(x0, z0, x1, z1) { // straight line free of buildings / water?
       const d = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(d);
@@ -545,10 +613,25 @@
     update(dt) {
       const o = this.owner;
       if (this.hopT > 0) this.hopT -= dt;
-      if (o.away) { if (!this.away) { this.away = true; this.sprite.visible = false; } return; }
+      if (this.meetT > 0 && (this.meetT -= dt) <= 0) this.lookAt = null;
+      if (o.away || (o.inside && this.a.indoor)) { if (!this.away) { this.away = true; this.sprite.visible = false; this.sniffAt = null; } return; } // indoor dogs go in with her
       if (this.away) { this.away = false; this.x = o.x + NB.rr(-1, 1) + this.side; this.z = o.z + 1.2; this.path = null; }
+      if (this.woofT > 0 && (this.woofT -= dt) <= 0) this.bark();
+      if (this.a.barksAtDogs && (this.meetCd -= dt) <= 0) {
+        this.meetCd = 1;
+        const other = E.list.find((d) => d !== this && d.kind === 'dog' && !d.away && d.owner !== o && Math.hypot(d.x - this.x, d.z - this.z) < 8);
+        if (other) { this.meetCd = NB.rr(80, 140); this.meet(other); }
+      }
       let tx, tz, slack = 1.3;
-      if (o.inside) {
+      if (o.sniffT > 0 && !o.inside) { // the owner stopped for a sniff: nose to the ground somewhere next to her
+        if (!this.sniffAt) for (let k = 0; k < 10 && !this.sniffAt; k++) {
+          const a = Math.random() * 6.28, r = NB.rr(1.2, 2.2), x = o.x + Math.cos(a) * r, z = o.z + Math.sin(a) * r;
+          if (!map.inBuilding(x, z, 0.5) && map.streetDist(x, z) > -0.5 && this.clear(o.x, o.z, x, z)) this.sniffAt = { x, z, t: NB.rr(2.5, 5) };
+        }
+        if (this.sniffAt && (this.sniffAt.t -= dt) <= 0) { this.sniffAt = null; if (Math.random() < 0.4) say(this, NB.pick(['*schnüffel*', '*schnüffel schnüffel*', '?!']), { quiet: true, life: 1.4 }); }
+      } else this.sniffAt = null;
+      if (this.sniffAt) { tx = this.sniffAt.x; tz = this.sniffAt.z; slack = 0.3; }
+      else if (o.inside) {
         const b = o.inBuilding || o.home, t = [-b.doorN[1], b.doorN[0]];
         tx = b.entryPt.x + b.doorN[0] * 1.6 + t[0] * this.side * 1.3; tz = b.entryPt.z + b.doorN[1] * 1.6 + t[1] * this.side * 1.3; slack = 0.9;
       } else {
@@ -577,20 +660,26 @@
       } else {
         this.moving = false; this.idleT += dt;
         if (far > 25 && !o.inside) { this.x = o.x + this.side; this.z = o.z + 1; } // lost her (teleport in a car etc.)
-        if (this.idleT > 1.5) this.heading = o.inside ? Math.atan2(-this.side, 1) : Math.atan2(o.x - this.x, o.z - this.z);
+        if (this.lookAt) this.heading = Math.atan2(this.lookAt.x - this.x, this.lookAt.z - this.z);
+        else if (this.sniffAt) this.heading = Math.atan2(this.sniffAt.x - o.x, this.sniffAt.z - o.z);
+        else if (this.idleT > 1.5) this.heading = o.inside ? Math.atan2(-this.side, 1) : Math.atan2(o.x - this.x, o.z - this.z);
       }
+      this.sniffing = !!this.sniffAt && !this.moving;
       this.barkT -= dt;
-      if (this.barkT <= 0) { this.barkT = NB.rr(25, 90); if (NB.UI.onScreen(this) && !o.fishing) { say(this, 'Wuff!', { quiet: true, life: 1.5 }); NB.Audio.play('bark', { pos: this, vol: 0.6, rate: this.a.voice || 1 }); } }
+      if (this.barkT <= 0) { this.barkT = this.a.loud ? NB.rr(12, 40) : NB.rr(25, 90); if (NB.UI.onScreen(this) && !o.fishing) { say(this, 'Wuff!', { quiet: true, life: 1.5 }); NB.Audio.play('bark', { pos: this, vol: 0.6, rate: this.a.voice || 1 }); } }
       this.pose(dt);
     }
     pose(dt) {
       this.sprite.visible = !this.away;
       if (this.away) return;
-      if (this.moving) { const f = I.facing(this.heading); if (f === 'e' || f === 'se' || f === 'ne') this.dir = 'right'; else if (f === 'w' || f === 'sw' || f === 'nw') this.dir = 'left'; }
-      const F = this.frames;
-      const set = this.moving ? F.walk[Math.floor(this.anim * (this.speed > 3 ? 9 : 6)) % 2] : this.idleT < 5 ? F.stand : this.idleT < 14 ? F.sit : F.lie;
+      const F = this.frames, f = I.facing(this.heading);
+      if (this.moving || this.lookAt || this.sniffAt) { if (f === 'e' || f === 'se' || f === 'ne') this.dir = 'right'; else if (f === 'w' || f === 'sw' || f === 'nw') this.dir = 'left'; }
+      this.view = F.stand.down && f === 's' ? 'down' : F.stand.up && f === 'n' ? 'up' : this.dir; // four views (Kuba)
+      const happy = F.wag && (this.idleT < 5 || this.lookAt || this.owner.pause > 0);
+      const set = this.moving ? F.walk[Math.floor(this.anim * (this.speed > 3 ? 9 : 6)) % 2] : this.sniffing && F.sniff ? F.sniff : happy ? F.wag[Math.floor(performance.now() / 140) % 2] : this.idleT < 5 ? F.stand : this.idleT < 14 ? F.sit : F.lie;
       const hop = this.hopT > 0 ? Math.sin((this.hopT / 0.3) * Math.PI) * 0.35 : 0;
-      place(this, set[this.dir], this.x, hop, this.z);
+      this.hopY = hop;
+      place(this, set[this.view] || set[this.dir], this.x, hop, this.z);
     }
     click() {
       say(this, NB.pick(this.a.clicks || ['Wuff!']));

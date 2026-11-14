@@ -766,6 +766,11 @@
       case 'cap':
         setRow(rows, 2, '...cccc...'); setRow(rows, 3, '..cccccc..'); setRow(rows, 4, isS ? '..cccccccc' : '.cccccccc.');
         break;
+      case 'capPony': // a cap with the ponytail pulled out through the back
+        setRow(rows, 2, '...cccc...'); setRow(rows, 3, '..cccccc..'); setRow(rows, 4, isS ? '..cccccccc' : '.cccccccc.');
+        if (isS) { setCh(rows, 5, 1, 'h'); setCh(rows, 5, 0, 'h'); setCh(rows, 6, 0, 'h'); setCh(rows, 7, 0, 'h'); }
+        if (isB) for (let y = 5; y <= 10; y++) { setCh(rows, y, 4, 'h'); setCh(rows, y, 5, 'h'); }
+        break;
       case 'straw': setRow(rows, 1, '...yyyy...'); setRow(rows, 2, '..yyyyyy..'); setRow(rows, 3, 'yyyyyyyyyy'); break;
       case 'headscarf':
         if (isF) { setRow(rows, 2, '...kkkk...'); setRow(rows, 3, '..kkkkkk..'); setRow(rows, 4, '.kkkkkkkk.'); setRow(rows, 5, '.kssssssk.'); }
@@ -786,6 +791,14 @@
       for (let y = 15; y <= 16; y++) rows[y] = rows[y].replace(/p/g, 'l');
     }
     if (L.apron && !isB) for (let y = 10; y <= 14; y++) for (let x = isS ? 6 : 3; x <= (isS ? 7 : 6); x++) if (rows[y][x] !== '.') setCh(rows, y, x, 'a');
+    // tracksuit: white stripes down the outside of the sleeves and trouser legs
+    if (L.stripes) {
+      if (isS) { for (let y = 10; y <= 11; y++) setCh(rows, y, 5, 'w'); for (let y = 13; y <= 16; y++) { const x = rows[y].indexOf('p'); if (x >= 0 && rows[y][x + 1] === 'p') setCh(rows, y, x + 1, 'w'); } }
+      else {
+        for (let y = 10; y <= 11; y++) { if (rows[y][1] === 't') setCh(rows, y, 1, 'w'); if (rows[y][8] === 't') setCh(rows, y, 8, 'w'); }
+        for (let y = 13; y <= 16; y++) { const a = rows[y].indexOf('p'), b = rows[y].lastIndexOf('p'); if (a >= 0) setCh(rows, y, a, 'w'); if (b > a) setCh(rows, y, b, 'w'); }
+      }
+    }
     // embroidered bands across the top (two colours, alternating pixels) - e.g. a Mexican huipil-style blouse
     if (L.bands) for (let y = 10; y <= 11; y++) for (let x = 0; x < 10; x++) if (rows[y][x] === 't') setCh(rows, y, x, (x + y) % 2 ? 'x' : 'z');
     // a flower in the hair (above the ear on the right side; on the back of the head from behind)
@@ -802,7 +815,7 @@
     const colors = {
       h: L.hair, s: L.skin, e: '#2b2b3a', m: NB.shade(L.skin, 0.78), t: L.shirt, p: L.pants, f: L.shoes,
       g: '#1e1e28', c: L.cap || '#d94a4a', y: '#e8c860', a: L.apron || '#ffffff', d: L.dress || L.shirt, l: L.legs || L.skin, k: L.scarf || '#c0392b',
-      x: (L.bands || [])[0] || '#ffd23f', z: (L.bands || [])[1] || '#2fbf71', o: L.flower || '#ff4f7a', r: '#f3c84a',
+      w: L.stripes || '#ffffff', x: (L.bands || [])[0] || '#ffd23f', z: (L.bands || [])[1] || '#2fbf71', o: L.flower || '#ff4f7a', r: '#f3c84a',
     };
     const col = (ch) => colors[ch];
     const build = (base, view, legs, post) => {
@@ -841,7 +854,31 @@
     sit: ['..........bbb.', '.........bbbbb', '.........bbweb', '.........bwwwn', '......bbbbwwwn', '....bbbbbbwww.', '..wbbbbbbbww..', '..wbbbbbbwww..', '..wwbbb..ww...', '..wwww...ww...'],
     lie: ['..............', '..............', '..............', '..........bbb.', '.........bbbbb', 'wb.......bbweb', '.bbbbbbbbbwwwn', '..bbbbbbbbwwwn', '.wwbbbbbbwwww.', '.wwww....wwww.'],
   };
+  // ---------- small grey street dog (Kuba): scruffy, one ear up and one floppy, red collar; four views ----------
+  // side view drawn facing right; tail A / B alternate = wagging
+  const MUTT = {
+    side1: ['............', '........d...', 'u......gggg.', '.u.....dgegl', '..gggggdrlln', '..ghghghgll.', '..gggggggl..', '..g.g..g.g..', '..h.h..h.h..'],
+    side2: ['............', '........d...', '.u.....gggg.', '.u.....dgegl', '..gggggdrlln', '..ghghghgll.', '..gggggggl..', '.g...g.g..g.', '.h...h.h..h.'],
+    wag: ['............', '........d...', '.u.....gggg.', '.u.....dgegl', '..gggggdrlln', '..ghghghgll.', '..gggggggl..', '..g.g..g.g..', '..h.h..h.h..'],
+    sniff: ['............', '............', 'u...........', '.u......d...', '..gggggggg..', '..ghghghdgeg', '..gggggggrll', '..g.g..g.g.n', '..h.h..h.h..'],
+    sit: ['........d...', '.......gggg.', '.......dgegl', '......gdrlln', '.....gghgll.', '....gghggl..', '....ggggg...', 'uu..gghg.g..', '.uuuhhhh.h..'],
+    lie: ['............', '............', '............', '........d...', '.......gggg.', '.......dgegl', 'uugghghgrlln', '.hgggggggll.', '.hh.....hh..'],
+    front1: ['.d......', '.gggggd.', '.geggegd', '.gllllg.', '..lnnl..', '..rrrr..', '.ggllggu', '..g..g..', '..h..h..'],
+    front2: ['.d......', '.gggggd.', '.geggegd', '.gllllg.', '..lnnl..', '..rrrr..', 'uggllgg.', '..g..g..', '.....h..'],
+    back1: ['.d......', '.ggggd..', '.gggggd.', '..rrrr..', '.gu.ggg.', '.ggugg..', '.gggggg.', '.g.gg.g.', '.h.hh.h.'],
+    back2: ['.d......', '.ggggd..', '.gggggd.', '..rrrr..', '.ggg.ug.', '..gguggg', '.gggggg.', '.g.gg.g.', '.h.hh.h.'],
+  };
+  function mutt() {
+    const C = { g: '#8e8c88', h: '#66635f', l: '#c9c5bd', d: '#4a4642', e: '#1e1a18', n: '#141210', r: '#d42a2a', u: '#77746f' };
+    const colorOf = (ch, x, y) => (ch === 'g' && (x * 7 + y * 3) % 5 === 0 ? C.h : C[ch]); // scruffy fur
+    const o = { shadowW: 9, shadowH: 1.6 };
+    const side = (rows) => { const r = I.rows(rows, colorOf, o); return { right: r, left: flipRec(r) }; };
+    const four = (s, f, b) => Object.assign(side(MUTT[s]), { down: I.rows(MUTT[f], colorOf, o), up: I.rows(MUTT[b], colorOf, o) });
+    const w1 = four('side1', 'front1', 'back1'), w2 = four('side2', 'front2', 'back2');
+    return { walk: [w1, w2], stand: w1, wag: [w1, Object.assign(side(MUTT.wag), { down: w2.down, up: w2.up })], sniff: side(MUTT.sniff), sit: side(MUTT.sit), lie: side(MUTT.lie) };
+  }
   M.dog = function (L) {
+    if (L && L.breed === 'mutt') return mutt();
     L = Object.assign({ missing: null }, L);
     const colorOf = (ch) => ({ b: '#1d1b1e', w: '#f4f2ee', e: '#c9a86a', n: '#3a3a3e' }[ch]);
     // the front-left leg is the far front leg when facing right (columns 9-10) and the near one when facing left

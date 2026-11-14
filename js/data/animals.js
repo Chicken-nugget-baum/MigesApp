@@ -16,6 +16,11 @@ NB.Data.animals = [
   // with her in the Mini. Morgan lost his front left leg. Luna and Mina (`dogs: true`) like to ride on their backs.
   { kind: 'dog', name: 'Manolo', owner: 'mariana', side: -1, voice: 0.85, look: {}, clicks: ['Wuff!', 'Wuff wuff!', 'Hecheln… 🐾', '¡Guau!'] },
   { kind: 'dog', name: 'Morgan', owner: 'mariana', side: 1, voice: 1.0, look: { missing: 'frontLeft' }, clicks: ['Wuff!', 'Drü Bei, null Problem. Wuff!', '¡Guau guau!', 'Hopp hopp hopp!'] },
+  // Kuba: Karin's small grey street dog (mixed breed, scruffy, one floppy ear). Always on the red leash, goes indoors
+  // with her (indoor), barks at every other dog (barksAtDogs: Karin stops and chats with the owner), barks a lot (loud),
+  // adds a "Wuff!" whenever Karin is clicked (chimeIn).
+  { kind: 'dog', name: 'Kuba', owner: 'karin', side: 1, voice: 1.35, look: { breed: 'mutt' }, leash: '#d42a2a', indoor: true, barksAtDogs: true, loud: true, chimeIn: true,
+    clicks: ['Wuff!', 'Wuff! Wuff!', 'WUFF!', '*schnüffel* … Wuff!'] },
   // Fallow deer on the Hirschfarm behind Niederwilerstrasse 21.1 (paddock = map.deer). kind: stag | hind | calf
   { kind: 'deer', name: 'De Platzhirsch', look: { kind: 'stag' } },
   { kind: 'deer', name: 'Hirschkue Bella', look: { kind: 'hind' } },

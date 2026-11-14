@@ -103,6 +103,17 @@
       ctx.fillStyle = '#e8463a'; ctx.beginPath(); ctx.arc(fl[0], fl[1], Math.max(2, v.zoom), 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(fl[0], fl[1] - Math.max(1, v.zoom * 0.6), Math.max(1, v.zoom * 0.6), 0, Math.PI * 2); ctx.fill();
     }
+    // leashes: from the owner's hand to the dog's collar, sagging a little when slack
+    for (const e of NB.Entities.list) {
+      if (e.kind !== 'dog' || !e.a.leash || e.away || e.owner.inside || e.owner.away) continue;
+      const o = e.owner, d = Math.hypot(e.x - o.x, e.z - o.z);
+      if (d > 7) continue;
+      const k = d > 0.01 ? 0.3 / d : 0, h = toScreen(o.x + (e.x - o.x) * k, 0.85 + (o.hopY ? o.hopY() : 0), o.z + (e.z - o.z) * k), c = toScreen(e.x, 0.75 + (e.hopY || 0), e.z);
+      if (!h || !c) continue;
+      const sag = Math.max(0, 3 - d) * 2.5 * v.zoom;
+      ctx.lineWidth = Math.max(1, v.zoom * 0.6); ctx.strokeStyle = e.a.leash;
+      ctx.beginPath(); ctx.moveTo(h[0], h[1]); ctx.quadraticCurveTo((h[0] + c[0]) / 2, (h[1] + c[1]) / 2 + sag, c[0], c[1]); ctx.stroke();
+    }
     // boule: balls lying on the court, the cochonnet ("Säuli"), a ball in the air
     const bg = NB.map.bouleGame;
     if (bg) {

@@ -10,7 +10,7 @@ NB.Data.visitors = [
   {
     members: ['joel', 'mariana'],
     car: { color: '#1f5c3a', name: 'Mini (elektrisch)', lines: ['Summ… (elektrisch, ganz liislig)', 'LB-Kennzeiche: Lenzburg–Nesselnbach und zrugg.', 'Lädt bi de Mige am Hof. 🔌', 'Joel und Mariana ihre Mini Cooper.'] },
-    arrive: ['10:30', '13:00'], leave: ['20:00', '22:00'],
+    arrive: ['07:45', '09:00'], leave: ['20:00', '22:00'],
   },
   // Yves comes from Mellingen with the Postauto (by: 'bus' = gets off / boards at the Mitteldorf stop).
   { members: ['yves'], by: 'bus', car: {}, arrive: ['08:20', '09:30'], leave: ['20:30', '21:45'] },
@@ -130,7 +130,7 @@ NB.Data.characters = [
     id: 'joel', name: 'Joel', home: 'buurehuus', visitor: true, cycle: true,
     look: { skin: '#eec1a0', hair: '#6b4226', hairStyle: 'short', glasses: true, shirt: '#f4f3ee', pants: '#26324a', shoes: '#2a2a2a' },
     voice: 0.85, favorites: ['sitzplatz', 'hof', 'beiz'],
-    routine: [{ at: '10:00', go: 'hof' }, { at: '10:45', go: 'terrasse' }, { at: '12:15', go: 'sitzplatz' }, { at: '13:30', go: 'home:buurehuus' }, { at: '15:00', go: 'fischerplatz', do: 'fish' }, { at: '17:30', go: 'beiz' }, { at: '19:00', go: 'sitzplatz' }],
+    routine: [{ at: '07:30', go: 'sitzplatz' }, { at: '10:00', go: 'hof' }, { at: '10:45', go: 'terrasse' }, { at: '12:15', go: 'sitzplatz' }, { at: '13:30', go: 'home:buurehuus' }, { at: '15:00', go: 'fischerplatz', do: 'fish' }, { at: '17:30', go: 'beiz' }, { at: '19:00', go: 'sitzplatz' }],
     arriveLines: ['Hoi Mige, sind mer!', 'Lenzburg–Nesselnbach: 25 Minute, ganz liislig.', 'Mige, dörf i de Mini alade?', 'Zerscht en Kafi. Denn alles anderi.'],
     leaveLines: ['Tschüss Mige, bis bald!', 'Hei nach Lenzburg. Mariana, chunnsch?', 'De Mini isch glade, los!', 'Mami, mir händ gässe. Ehrlich.'],
     clicks: ['Vibe Code forever! 💻', 'Ich bi nid Joelito. … Okay, chli.', 'Momänt, nur no schnäll es Feature.', 'Dörfi de Luna en Snack geh?', 'Mige – gits en Zigi?', 'Es Bier? Jo. Es Kafi? Au.'],
@@ -150,7 +150,7 @@ NB.Data.characters = [
     id: 'mariana', name: 'Mariana', home: 'buurehuus', visitor: true, cycle: true,
     look: { skin: '#c98a5e', hair: '#1c1210', hairStyle: 'long', flower: '#ff4f7a', earrings: true, shirt: '#e4007c', bands: ['#ffd23f', '#2fbf71'], pants: '#3a3f55', shoes: '#f4f1ea' },
     voice: 1.35, favorites: ['sitzplatz', 'hof', 'weiher'],
-    routine: [{ at: '10:00', go: 'hof' }, { at: '10:45', go: 'terrasse' }, { at: '12:15', go: 'sitzplatz' }, { at: '13:30', go: 'home:buurehuus' }, { at: '15:00', go: 'fischerplatz', do: 'fish' }, { at: '17:30', go: 'sitzplatz' }],
+    routine: [{ at: '07:30', go: 'sitzplatz' }, { at: '10:00', go: 'hof' }, { at: '10:45', go: 'terrasse' }, { at: '12:15', go: 'sitzplatz' }, { at: '13:30', go: 'home:buurehuus' }, { at: '15:00', go: 'fischerplatz', do: 'fish' }, { at: '17:30', go: 'sitzplatz' }],
     arriveLines: ['¡Hola! Mina, Luna, mir sind do!', 'Geil, Nesselnbach! Gömmer zerscht zu de Chatze?', 'Hoi Mige! Ich ha Tortillas vo Mas Amor debii. 🌮', '¡No manches! Isch das wider chalt do.'],
     leaveLines: ['Gömmer, Joelito Papacito. Hasta mañana, Nesselnbach!', '¡Adiós! Bis zum nöchschte Mol!', 'Joelito, hesch de Schlüssel? ¡Vámonos!', 'Morn am sächsi Tortillas mache. Gömmer hei.'],
     clicks: ['Joelito Papacito, gömmer go fische?', 'Das sind Manolo und Morgan, mini Border Collies. Morgan het drü Bei – und isch de schnällscht!', 'Geil, d\'Luna isch wider do!', 'Hüt chochi Tacos für alli. Geil, oder? 🌮', 'Ich schaffe bi Mas Amor in Züri – die beschte Tortillas vo de Schwiiz!', '¡No manches! Scho wider Räge?', '¡Chintrolletta! Jetz längts aber, gömmer.'],
@@ -161,6 +161,9 @@ NB.Data.characters = [
     fishLines: ['Joelito, du machsch z\'vill Lärm! ¡Silencio!', 'So schön ruhig do am Weiher… geil.', 'Ha eine! …nei, nur Alge. ¡Chintrolletta!', 'Chunnt de Weiher-Buur? ¡Cuidado!'],
     biteLines: ['¡Órale! Geil, de isch riesig!', 'Joelito Papacito, lueg, min isch grösser!', 'Es zieht! ¡Rápido!'],
     caughtLines: ['¡Chintrolletta! Joelito, renn!', '¡No manches! Mir sind scho wäg!', '¡Córrele, Papacito!'],
+    // when Karin's Kuba barks at Manolo and Morgan / when Karin greets her
+    meetReplies: ['¡Hola Karin! Kuba, no manches, so lut!', 'Hoi Karin! De Manolo und de Morgan händ de Kuba gern. Geil!', 'Karin! ¡Qué lindo! De Kuba isch so herzig.'],
+    karinLines: ['¡Hola Karin! Hoi Kuba!', 'Hoi Karin! Geil, d\'Gassirundi!'],
   },
   // Iris: Joel's and Yves's mother. Lives at Ifangweg 15 (h31). Yves is there a lot; Joel and Mariana drop by.
   {
@@ -258,6 +261,31 @@ NB.Data.characters = [
     clicks: ['Hoi! Milch, Joghurt, Chäs – alles vo do.', 'Ich fahr d\'Milch zu de Buure go hole.', 'Nach em Brand händ alli gholfe. Danke, Nesselnbach!', 'Jetz längts, ich mues d\'Kanne wäsche.'],
     random: ['De Tank isch voll.', 'Silvia, d\'Chunde!', 'Hoffentlich brönnt\'s nie meh.'],
     night: ['Guet Nacht, Chäserei.'],
+  },
+  // Karin: lives at Niederwilerstrasse 4 with Kuba, her small grey street dog (js/data/animals.js). Cheerful, chatty,
+  // knows everyone in the village. Walks Kuba on the same loop several times a day (do: 'walk' = map.gassi) and
+  // greets everyone she passes; when Kuba barks at another dog, she stops and chats with its owner.
+  {
+    id: 'karin', name: 'Karin', home: 'h95', shuffle: true,
+    look: { skin: '#f0c4a0', hair: '#7a4a2a', hairStyle: 'capPony', cap: '#2f8a4a', shirt: '#2f8a4a', pants: '#2f8a4a', stripes: '#ffffff', shoes: '#f4f4f0' },
+    voice: 1.3, favorites: ['dorfplatz', 'hof'],
+    routine: [{ at: '06:45', go: 'gassi', do: 'walk' }, { at: '07:45', go: 'home:h95' }, { at: '10:00', go: 'dorfplatz' }, { at: '11:00', go: 'home:h95' }, { at: '12:15', go: 'gassi', do: 'walk' },
+      { at: '13:00', go: 'home:h95' }, { at: '17:30', go: 'gassi', do: 'walk' }, { at: '18:45', go: 'home:h95' }, { at: '20:45', go: 'gassi', do: 'walk' }, { at: '21:30', go: 'home:h95' }],
+    sleep: ['22:30', '06:30'],
+    clicks: [ // Kuba always adds a "Wuff!" (chimeIn)
+      'Grüezi! Dä Kuba het hüt scho drü Eichhörnli verjagt!', 'De Kuba isch chli, aber er meint, er seig en Wolf.', 'Pass uf, er bellt nume – bisse tuet er nöd.', 'Gester het er en ganze Cervelat gklaut. Frech, gäll Kuba?',
+      'Häsch scho ghört? D\'Bäckerei macht jetzt Zimtschnägge!', 'Ich ha ghört, de Nachbar baut en neue Hüenerstall...', 'Weisch, wer hüt wieder z\'spät uf em Märt gsi isch? Säg\'s niemertem!',
+    ],
+    weatherLines: {
+      sun: ['Was für es schöns Wätter für en Spaziergang!'],
+      rain: ['Es gaht glaub bald go rägne – de Kuba schmöckt das immer.'],
+      cold: ['Hüt isch es aber chalt, gäll? Guet, han i mis Trainerli.'],
+    },
+    random: ['Häsch scho ghört? D\'Bäckerei macht jetzt Zimtschnägge!', 'Ich ha ghört, de Nachbar baut en neue Hüenerstall...', 'Kuba, nöd a jede Baum!', 'Kuba! Hopp, wiiter!', 'Was für es schöns Wätter für en Spaziergang!'],
+    night: ['Kuba, mir gönd is Bett. Guet Nacht!'],
+    greetLines: ['Hoi %o!', 'Grüezi %o, wie gaht\'s?', 'Sali %o! Lueg, de Kuba freut sich!', '%o! Häsch scho ghört…?', 'Hoi %o, schöne Tag no!'],
+    meetLines: ['Hoi %o! Kuba, pfui, nöd so lut! De %d tuet der nüt.', 'Sali %o! Ui, de Kuba und de %d – die zwei!', '%o! Häsch scho ghört, d\'Bäckerei macht jetzt Zimtschnägge?', 'Grüezi %o! De %d isch aber e Schöne.'],
+    sniffLines: ['Schnüffle, Kuba, schnüffle.', 'Kuba, was häsch du wider gfunde?', 'Nöd ässe, Kuba!'],
   },
   // De Hirschbuur: runs the Hirschfarm behind Niederwilerstrasse 21.1 (lives at Niederwilerstrasse 21): feeds the deer
   // morning and evening, sells pumpkins at the stand by the street (the big Kürbismarkt in autumn).
