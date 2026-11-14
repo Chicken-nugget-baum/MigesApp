@@ -113,7 +113,7 @@ const streets = ways
   .filter((w) => (w.tags.highway === 'residential' || (w.tags.highway === 'service' && SERVICE_ROADS.includes(w.tags.name))) && STREET_NAMES.includes(w.tags.name))
   .map((w) => ({ name: w.tags.name, width: 5, pts: w.geometry.map(toL) }))
   .filter((s) => s.pts.every(([, z]) => z > -300)); // drop the far-away Niederwilerstrasse near Tägerig
-const SOUTH_LIMIT = 1000; // the map reaches south to where the Schänisweg meets the Nesselnbacherstrasse (the walking loop)
+const SOUTH_LIMIT = 1000; // streets are read this far south, then cut at the map edge (MAP_SOUTH below)
 for (const s of streets) s.pts = s.pts.filter(([, z]) => z < SOUTH_LIMIT);
 for (let i = streets.length - 1; i >= 0; i--) if (streets[i].pts.length < 2) streets.splice(i, 1); // pieces entirely in the south
 function nearestStreet(p) {
@@ -253,7 +253,8 @@ while (cur && !used.has(cur)) {
   const end = route[route.length - 1];
   cur = nw.find((s) => !used.has(s) && Math.hypot(s.pts[0][0] - end[0], s.pts[0][1] - end[1]) < 1);
 }
-const allPts = streets.filter((s) => !SERVICE_ROADS.includes(s.name)).flatMap((s) => s.pts).filter(([, z]) => z < 910); // service roads and the road on south of the Schänisweg junction don't grow the map
+const MAP_SOUTH = 480; // the map ends a bit south of the grass path from the Schänisweg to the Nesselnbacherstrasse
+const allPts = streets.filter((s) => !SERVICE_ROADS.includes(s.name)).flatMap((s) => s.pts).filter(([, z]) => z < MAP_SOUTH); // service roads and the roads on south don't grow the map (they run out over the edge)
 const bounds = [
   Math.min(...allPts.map((p) => p[0])) - 50, Math.min(...allPts.map((p) => p[1])) - 50,
   Math.max(...allPts.map((p) => p[0])) + 50, Math.max(...allPts.map((p) => p[1])) + 50,
@@ -287,11 +288,12 @@ function clipToMap(pts) {
 }
 // Unnamed in OSM but part of a named road: the Schänisweg goes on south as a gravel track (towards the
 // Nesselnbacherstrasse), the Fendler runs from the Bremgarterstrasse down to the Niederwilerstrasse.
-const TRACK_IDS = [102806510, 102806534, 97960510];
+const TRACK_IDS = [102806510, 102806534, 97960510, 102806511];
 const TRACK_NAMES = { 102806534: 'Schänisweg', 97960510: 'Fendler' };
+const GRASS_IDS = [102806511]; // the short cut from the Schänisweg track to the Nesselnbacherstrasse: just grass between two fields
 const tracks = ways
   .filter((w) => TRACK_IDS.includes(w.id))
-  .map((w) => ({ name: TRACK_NAMES[w.id] || w.tags.name || 'Feldweg', kind: 'track', width: 3, pts: w.geometry.map(toL), clip: true }));
+  .map((w) => ({ name: TRACK_NAMES[w.id] || w.tags.name || 'Feldweg', kind: GRASS_IDS.includes(w.id) ? 'grass' : 'track', width: GRASS_IDS.includes(w.id) ? 2.6 : 3, pts: w.geometry.map(toL), clip: true }));
 for (const t of tracks) for (const p of t.pts) for (const w of water) {
   const c = centroid(w.pts);
   for (let guard = 0; guard < 40; guard++) {
@@ -304,21 +306,25 @@ for (const t of tracks) for (const p of t.pts) for (const w of water) {
   }
 }
 streets.push(...tracks); // cut at the map edge once the bounds are final (below)
-// the viewpoint over Nesselnbach (a wayside cross and a bench): in the first curve of the Schänisweg track, on the
-// inside of the curve, looking back at the village
+// the viewpoint over Nesselnbach (a wayside cross and a bench): in the first curve of the grass path from the
+// Schänisweg track to the Nesselnbacherstrasse (walking it from the Schänisweg), on the side facing the village
 let viewpoint = null;
 {
-  const ms = stops.find((q) => /Mitteldorf/.test(q.name)), t = tracks.find((q) => q.name === 'Schänisweg'), V = (ms && ms.at) || [0, 0];
-  const turnAt = (i) => { const [a, b, c] = [t.pts[i - 1], t.pts[i], t.pts[i + 1]]; const d = Math.atan2(c[0] - b[0], c[1] - b[1]) - Math.atan2(b[0] - a[0], b[1] - a[1]); return Math.atan2(Math.sin(d), Math.cos(d)); };
-  // the first stretch of 60 m that turns by 15 degrees or more (the track bends gently)
-  if (t) for (let s0 = 1; s0 < t.pts.length - 1 && !viewpoint; s0++) {
-    let sum = 0, k = s0;
-    while (k < t.pts.length - 1 && Math.hypot(t.pts[k][0] - t.pts[s0][0], t.pts[k][1] - t.pts[s0][1]) < 60) sum += turnAt(k++);
-    if (Math.abs(sum) < 0.26) continue;
-    const i = (s0 + k) >> 1, [a, b, c] = [t.pts[i - 1], t.pts[i], t.pts[i + 1]];
-    const l = Math.hypot(c[0] - a[0], c[1] - a[1]) || 1; let n = [-(c[1] - a[1]) / l, (c[0] - a[0]) / l];
-    if (n[0] * (V[0] - b[0]) + n[1] * (V[1] - b[1]) < 0) n = [-n[0], -n[1]]; // the side towards the village
-    viewpoint = { x: +(b[0] + n[0] * 3.8).toFixed(2), z: +(b[1] + n[1] * 3.8).toFixed(2), face: +Math.atan2(V[0] - b[0], V[1] - b[1]).toFixed(3), road: [b[0], b[1]] };
+  const ms = stops.find((q) => /Mitteldorf/.test(q.name)), V = (ms && ms.at) || [0, 0];
+  const g = tracks.find((q) => q.kind === 'grass'), sw = tracks.find((q) => q.name === 'Schänisweg');
+  if (g && sw) {
+    const dSw = (p) => Math.min(...sw.pts.map((q) => Math.hypot(q[0] - p[0], q[1] - p[1])));
+    const t = { pts: dSw(g.pts[0]) < dSw(g.pts[g.pts.length - 1]) ? g.pts.slice() : g.pts.slice().reverse() }; // from the Schänisweg end
+    const turnAt = (i) => { const [a, b, c] = [t.pts[i - 1], t.pts[i], t.pts[i + 1]]; const d = Math.atan2(c[0] - b[0], c[1] - b[1]) - Math.atan2(b[0] - a[0], b[1] - a[1]); return Math.atan2(Math.sin(d), Math.cos(d)); };
+    for (let s0 = 1; s0 < t.pts.length - 1 && !viewpoint; s0++) { // the first 40 m that turn by 15 degrees or more
+      let sum = 0, k = s0;
+      while (k < t.pts.length - 1 && Math.hypot(t.pts[k][0] - t.pts[s0][0], t.pts[k][1] - t.pts[s0][1]) < 40) sum += turnAt(k++);
+      if (Math.abs(sum) < 0.26) continue;
+      const i = (s0 + k) >> 1, [a, b, c] = [t.pts[i - 1], t.pts[i], t.pts[i + 1]];
+      const l = Math.hypot(c[0] - a[0], c[1] - a[1]) || 1; let n = [-(c[1] - a[1]) / l, (c[0] - a[0]) / l];
+      if (n[0] * (V[0] - b[0]) + n[1] * (V[1] - b[1]) < 0) n = [-n[0], -n[1]]; // the side towards the village
+      viewpoint = { x: +(b[0] + n[0] * 3).toFixed(2), z: +(b[1] + n[1] * 3).toFixed(2), face: +Math.atan2(V[0] - b[0], V[1] - b[1]).toFixed(3), road: [b[0], b[1]] };
+    }
   }
 }
 

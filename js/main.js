@@ -147,7 +147,7 @@
   // ---------- lamps with ground glow ----------
   const lamps = [];
   for (const s of S.streets) {
-    if (s.kind === 'track' || s.kind === 'main' || s.kind === 'lane') continue; // no lamps on the field track, the country road, the lane
+    if (['track', 'main', 'lane', 'grass'].includes(s.kind)) continue; // no lamps on the field tracks, the country road, the lane
     const pl = polyline(s.pts);
     for (let d = 12, side = 1; d < pl.len - 4; d += 30, side = -side) {
       const p = pl.at(d), off = s.width / 2 + 1.4;
@@ -236,6 +236,10 @@
       fg.lineWidth = 2.5 * TM; fg.lineJoin = 'round'; fg.strokeStyle = 'rgb(0,240,0)'; fg.stroke();
       fg.fillStyle = 'rgb(0,210,0)'; fg.fill();
     }
+    // grass paths (between two fields): the fields stop there, the ground stays meadow
+    fg.globalCompositeOperation = 'destination-out'; fg.lineCap = 'round'; fg.lineJoin = 'round';
+    for (const s of S.streets) if (s.kind === 'grass') { fg.lineWidth = s.width * TM; fg.beginPath(); s.pts.forEach(([x, z], k) => (k ? fg.lineTo((x - tx0) * TM, (z - tz0) * TM) : fg.moveTo((x - tx0) * TM, (z - tz0) * TM))); fg.stroke(); }
+    fg.globalCompositeOperation = 'source-over';
     const fd = fg.getImageData(0, 0, tw, th).data;
     const [tc, tg] = NB.canvas(tw, th);
     tg.fillStyle = '#000'; tg.fillRect(0, 0, tw, th);
@@ -246,10 +250,14 @@
       s.pts.forEach(([x, z], k) => (k ? tg.lineTo((x - tx0) * TM, (z - tz0) * TM) : tg.moveTo((x - tx0) * TM, (z - tz0) * TM)));
       tg.stroke();
     };
-    for (const s of S.streets) if (s.kind !== 'track' && s.kind !== 'main' && s.kind !== 'lane') stroke(s, s.width + 2.4, '#ff0000'); // sidewalks (not on the little lane)
+    for (const s of S.streets) if (!['track', 'main', 'lane', 'grass'].includes(s.kind)) stroke(s, s.width + 2.4, '#ff0000'); // sidewalks (not on the little lane)
     for (const s of S.streets) if (s.kind === 'main') stroke(s, s.width + 1.2, '#ff00ff'); // gravel shoulder
     for (const s of S.streets) if (s.kind === 'track') stroke(s, s.width, '#ff00ff'); // gravel
-    for (const s of S.streets) if (s.kind !== 'track') stroke(s, s.width, '#00ff00');
+    for (const s of S.streets) if (s.kind === 'grass') for (const side of [-0.55, 0.55]) { // a field path: two worn wheel ruts in the grass
+      const pts = s.pts.map(([x, z], k) => { const a = s.pts[Math.max(0, k - 1)], b = s.pts[Math.min(s.pts.length - 1, k + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [x - ((b[1] - a[1]) / l) * side, z + ((b[0] - a[0]) / l) * side]; });
+      stroke({ pts }, 0.55, '#ff00ff');
+    }
+    for (const s of S.streets) if (s.kind !== 'track' && s.kind !== 'grass') stroke(s, s.width, '#00ff00');
     if (map.fuel) { // petrol station forecourt: asphalt from the road edge to the shop
       const f = map.fuel, hx = Math.sin(f.heading), hz = Math.cos(f.heading), P = (a, m) => [(f.x + hx * a + f.n[0] * m - tx0) * TM, (f.z + hz * a + f.n[1] * m - tz0) * TM];
       tg.fillStyle = '#00ff00'; tg.beginPath();

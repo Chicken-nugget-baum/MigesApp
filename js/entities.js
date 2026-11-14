@@ -76,7 +76,7 @@
     if (NB.Env.darkness < 0.6 || (foxT -= dt) > 0) return;
     foxT = NB.rr(120, 300);
     const v = NB.view; if (!v) return;
-    const near = map.streets.filter((s) => s.kind !== 'track').map((s) => ({ s, i: s.pts.findIndex((p) => Math.hypot(p[0] - v.cx, p[1] - v.cy) < 60) })).filter((q) => q.i > 0);
+    const near = map.streets.filter((s) => s.kind !== 'track' && s.kind !== 'grass').map((s) => ({ s, i: s.pts.findIndex((p) => Math.hypot(p[0] - v.cx, p[1] - v.cy) < 60) })).filter((q) => q.i > 0);
     if (!near.length) return;
     const { s, i } = NB.pick(near), [ax, az] = s.pts[i - 1], [bx, bz] = s.pts[i], l = Math.hypot(bx - ax, bz - az) || 1, nx = (bz - az) / l, nz = -(bx - ax) / l, t = Math.random();
     const mx = ax + (bx - ax) * t, mz = az + (bz - az) * t, sg = Math.random() < 0.5 ? 1 : -1;

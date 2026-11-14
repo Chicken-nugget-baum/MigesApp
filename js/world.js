@@ -536,11 +536,15 @@
       .concat([{ x: map.viewpoint.cross.x + Math.sin(f) * 1.1, z: map.viewpoint.cross.z + Math.cos(f) * 1.1, face: f + Math.PI, sit: false }, { x: V.x - px * 1.6, z: V.z - pz * 1.6, face: f, sit: false }]);
     map.pois.aussicht = [V.x - 3, V.z - 3, V.x + 3, V.z + 3];
     const fieldAtV = map.fieldAt; map.fieldAt = (x, z) => (Math.hypot(x - V.x, z - V.z) < 5 ? null : fieldAtV(x, z)); // a bit of meadow round the bench
+    // the walk: out along the Schänisweg (past the end of the houses), along the grass path to the bench, on to the
+    // Nesselnbacherstrasse, then home (js/entities/festivals.js)
+    const sw = S.streets.find((q) => q.name === 'Schänisweg' && !q.kind), grass = S.streets.find((q) => q.kind === 'grass');
     const tr = S.streets.find((q) => q.name === 'Schänisweg' && q.kind === 'track');
-    if (tr) { // ~250 m further along the track: where the walk turns back
-      let d = 0, k = tr.pts.reduce((b, p, i) => (Math.hypot(p[0] - V.road[0], p[1] - V.road[1]) < Math.hypot(tr.pts[b][0] - V.road[0], tr.pts[b][1] - V.road[1]) ? i : b), 0);
-      while (k < tr.pts.length - 1 && d < 250) { d += Math.hypot(tr.pts[k + 1][0] - tr.pts[k][0], tr.pts[k + 1][1] - tr.pts[k][1]); k++; }
-      const [x, z] = tr.pts[k]; map.pois.feldwaeg = [x - 2, z - 2, x + 2, z + 2];
+    if (sw && tr) { const e = [sw.pts[0], sw.pts[sw.pts.length - 1]].sort((p, q) => Math.hypot(p[0] - tr.pts[0][0], p[1] - tr.pts[0][1]) - Math.hypot(q[0] - tr.pts[0][0], q[1] - tr.pts[0][1]))[0]; map.pois.schaenisweg = [e[0] - 2, e[1] - 2, e[0] + 2, e[1] + 2]; }
+    if (grass && tr) {
+      const d = (p) => Math.min(...tr.pts.map((q) => Math.hypot(q[0] - p[0], q[1] - p[1]))), ends = [grass.pts[0], grass.pts[grass.pts.length - 1]];
+      const [x, z] = d(ends[0]) > d(ends[1]) ? ends[0] : ends[1]; // the Nesselnbacherstrasse end
+      map.pois.feldwaeg = [x - 2, z - 2, x + 2, z + 2];
     }
   }
   // POIs from older data that don't exist in this small scene

@@ -661,7 +661,7 @@
   let walkT = 20;
   function walkGoal(c) {
     const w = walks.find((q) => q.ids.includes(c.id));
-    return w ? { place: w.stage === 'on' ? 'feldwaeg' : 'aussicht' } : null;
+    return w ? { place: w.stage === 'via' ? 'schaenisweg' : w.stage === 'on' ? 'feldwaeg' : 'aussicht' } : null;
   }
   function updateWalks(dt) {
     const V = map.viewpoint;
@@ -671,8 +671,9 @@
       const w = walks[i], ms = w.ids.map(person);
       w.age += dt;
       const end = () => { walks.splice(i, 1); ms.forEach((m) => { if (m) m.goalKey = null; }); };
-      if (w.age > 1100 || ms.some((m) => !m || m.away || m.searching || m.toCar)) { end(); continue; }
+      if (w.age > 1500 || ms.some((m) => !m || m.away || m.searching || m.toCar)) { end(); continue; }
       const arrived = (poi) => ms.every((m) => !m.path && !m.inside && map.pois[poi] && Math.hypot(m.x - (map.pois[poi][0] + map.pois[poi][2]) / 2, m.z - (map.pois[poi][1] + map.pois[poi][3]) / 2) < 5);
+      if (w.stage === 'via' && (!map.pois.schaenisweg || ms.every((m) => !m.inside && Math.hypot(m.x - (map.pois.schaenisweg[0] + 2), m.z - (map.pois.schaenisweg[1] + 2)) < 8))) { w.stage = 'out'; ms.forEach((m) => { m.goalKey = null; }); } // past the houses: on to the bench
       if (w.stage === 'out' && arrived('aussicht')) {
         w.stage = 'sit'; w.t = NB.rr(70, 160);
         talk(ms[0], NB.pick(VIEW_LINES));
@@ -689,10 +690,10 @@
     const pool = WALKERS.filter((g) => g.every((id) => free(person(id))));
     if (!pool.length) return;
     const ids = NB.pick(pool);
-    walks.push({ ids, stage: 'out', age: 0, t: 0 });
+    walks.push({ ids, stage: 'via', age: 0, t: 0 });
     ids.map(person).forEach((m, k) => { m.goalKey = null; if (!k && !m.inside) m.later = { t: 0.5, line: NB.pick(['Ich gang no echli go spaziere. 🚶', 'Es Ründeli am Schänisweg?', 'Chumm, mir gönd zum Bänkli.']) }; });
   }
-  F.walks = walks; F.startWalk = (ids) => { walks.push({ ids, stage: 'out', age: 0, t: 0 }); ids.map(person).forEach((m) => { if (m) m.goalKey = null; }); }; // console / tests
+  F.walks = walks; F.startWalk = (ids) => { walks.push({ ids, stage: 'via', age: 0, t: 0 }); ids.map(person).forEach((m) => { if (m) m.goalKey = null; }); }; // console / tests
 
   // ---------------------------------------------------------------- spawn + update
   F.init = function () {
