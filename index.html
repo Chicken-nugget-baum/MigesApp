@@ -19,44 +19,87 @@
       <button id="findcat" class="pill" title="Wo isch Luna?">🐱</button>
       <button id="centre" class="pill" title="Zur Bushaltestell">⌂</button>
       <button id="mute" class="pill" title="Ton">🔊</button>
+      <button id="search" class="pill" title="Wo isch…? (Suechspiel)">🔍</button>
       <button id="discover" class="pill" title="Entdeckige">✨</button>
+      <button id="settingsbtn" class="pill" title="Iistellige: Ziit, Feschttäg, Wätter, Ton">⚙️</button>
     </div>
   </div>
   <div id="card" class="panel hidden"><button id="cardclose" class="x" title="Zue (Esc)">×</button><div id="cardbody"></div></div>
   <div id="found" class="panel hidden"><button id="foundclose" class="x" title="Zue">×</button><div class="title">✨ Entdeckige</div><ul id="foundlist"></ul></div>
+  <div id="settings" class="panel hidden">
+    <button id="setclose" class="x" title="Zue (Esc)">×</button>
+    <div class="title">⚙️ Iistellige</div>
+    <div id="settoday" class="sub"></div>
+    <div class="sec">🕒 Ziit</div>
+    <div class="chips">
+      <button id="tpause" class="chip" title="Aahalte / wiiter (Leertaste)">⏸️</button>
+      <button class="chip" data-speed="1" title="Echtziit">1×</button>
+      <button class="chip" data-speed="10" title="10 Mol schnäller">10×</button>
+      <button class="chip" data-speed="60" title="1 Minute pro Sekunde">60×</button>
+      <button id="tnow" class="chip" title="Zrugg zur Ziit vo jetzt">Jetzt</button>
+    </div>
+    <div class="slide"><input id="tslider" type="range" min="0" max="1435" step="5" aria-label="Ziit"><b id="tlabel">--:--</b></div>
+    <div class="sec">📅 Feschttäg bsueche</div>
+    <div id="days" class="chips"></div>
+    <div class="sec">🌦️ Wätter</div>
+    <div class="chips">
+      <button class="chip" data-weather="clear" title="Sunne">☀️</button><button class="chip" data-weather="cloudy" title="Wolke">☁️</button><button class="chip" data-weather="rain" title="Räge">🌧️</button><button class="chip" data-weather="storm" title="Gwitter">⛈️</button><button class="chip" data-weather="snow" title="Schnee">❄️</button><button class="chip" data-weather="fog" title="Näbel">🌫️</button>
+    </div>
+    <div class="sec">🔊 Ton</div>
+    <label class="slide"><span>🗣️ Stimme</span><input type="range" min="0" max="100" data-vol="voice"></label>
+    <label class="slide"><span>🐈 Tön &amp; Tier</span><input type="range" min="0" max="100" data-vol="sfx"></label>
+    <label class="slide"><span>🐦 Umgebig</span><input type="range" min="0" max="100" data-vol="amb"></label>
+    <label class="slide"><span>🎺 Musig</span><input type="range" min="0" max="100" data-vol="music"></label>
+  </div>
   <div id="toast"></div>
+  <div id="game" class="hidden"></div>
+  <div id="quest" class="hidden"></div>
 
   <div id="intro">
     <div class="card">
       <h1>Nesselnbach</h1>
       <p>Niederwilerstrooss, Ifangweg und de Kapälleweg – und alles läbt.</p>
       <p class="hint">Chlick uf d'Lüüt, d'Chatze, d'Hüüser, s'Postauto…<br>Ziehe zum Verschiebe, Mausrad oder zwei Finger zum Zoome.<br>Lang uf e Chatz drücke = schnurre. Luna antippe = Zoomies!</p>
-      <button id="enter">Iitrete</button>
+      <div id="loadbar"><i></i></div>
+      <button id="enter" disabled>Lade s'Dorf…</button>
       <p class="credit">Charte-Date © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-Mitwirkendi · Amtlichi Vermessig Kanton Aargau · GWR (BFS) · SWISSIMAGE (swisstopo)</p>
     </div>
   </div>
 
+  <!-- loading bar: counts the deferred scripts as they arrive; main.js calls NB.onReady() when the village stands -->
+  <script>
+    (function () {
+      var n = 0, total = 0, bar = null;
+      window.NB = window.NB || {};
+      function set(f) { bar = bar || document.querySelector('#loadbar i'); if (bar) bar.style.width = Math.round(f * 100) + '%'; }
+      document.addEventListener('load', function (e) { if (e.target.tagName === 'SCRIPT') { total = total || document.querySelectorAll('script[defer]').length; n++; set(0.1 + 0.8 * n / total); } }, true);
+      NB.onReady = function () { set(1); var b = document.getElementById('enter'); if (b) { b.disabled = false; b.textContent = 'Iitrete'; } setTimeout(function () { var l = document.getElementById('loadbar'); if (l) l.classList.add('done'); }, 400); };
+    })();
+  </script>
   <!-- libraries (built from npm by scripts/vendor.mjs) -->
-  <script src="vendor/pixi.js"></script>
-  <script src="vendor/zzfx.js"></script>
+  <script defer src="vendor/pixi.js"></script>
+  <script defer src="vendor/zzfx.js"></script>
   <!-- game (order matters) -->
-  <script src="js/util.js"></script>
-  <script src="js/path.js"></script>
-  <script src="js/data/scene.js"></script>
-  <script src="js/iso.js"></script>
-  <script src="js/world.js"></script>
-  <script src="js/models.js"></script>
-  <script src="js/audio.js"></script>
-  <script src="js/env.js"></script>
-  <script src="js/entities/core.js"></script>
-  <script src="js/entities/vehicles.js"></script>
-  <script src="js/entities/animals.js"></script>
-  <script src="js/entities/villagers.js"></script>
-  <script src="js/entities/events.js"></script>
-  <script src="js/entities.js"></script>
-  <script src="js/ui.js"></script>
-  <script src="js/data/characters.js"></script>
-  <script src="js/data/animals.js"></script>
-  <script src="js/main.js"></script>
+  <script defer src="js/util.js"></script>
+  <script defer src="js/path.js"></script>
+  <script defer src="js/data/scene.js"></script>
+  <script defer src="js/iso.js"></script>
+  <script defer src="js/world.js"></script>
+  <script defer src="js/models.js"></script>
+  <script defer src="js/audio.js"></script>
+  <script defer src="js/env.js"></script>
+  <script defer src="js/entities/core.js"></script>
+  <script defer src="js/entities/vehicles.js"></script>
+  <script defer src="js/entities/animals.js"></script>
+  <script defer src="js/entities/villagers.js"></script>
+  <script defer src="js/entities/events.js"></script>
+  <script defer src="js/entities/festivals.js"></script>
+  <script defer src="js/entities.js"></script>
+  <script defer src="js/settings.js"></script>
+  <script defer src="js/ui.js"></script>
+  <script defer src="js/games.js"></script>
+  <script defer src="js/data/characters.js"></script>
+  <script defer src="js/data/animals.js"></script>
+  <script defer src="js/main.js"></script>
 </body>
 </html>

@@ -5,14 +5,17 @@
   const WEATHER_WEIGHTS = {
     winter: { clear: 3, cloudy: 4, fog: 3, snow: 3, rain: 1 },
     spring: { clear: 5, cloudy: 3, rain: 2, fog: 1 },
-    summer: { clear: 7, cloudy: 2, rain: 2 },
+    summer: { clear: 7, cloudy: 2, rain: 2, storm: 1 },
     autumn: { clear: 3, cloudy: 3, rain: 3, fog: 3 },
   };
-  const ICON = { clear: '☀️', cloudy: '☁️', rain: '🌧️', fog: '🌫️', snow: '❄️' };
-  const E = (NB.Env = { darkness: 0, weather: 'clear', minutes: 0, sun: 0 });
+  const ICON = { clear: '☀️', cloudy: '☁️', rain: '🌧️', fog: '🌫️', snow: '❄️', storm: '⛈️' };
+  const E = (NB.Env = { darkness: 0, weather: 'clear', minutes: 0, sun: 0, flash: 0, wetT: 0 });
+  E.wet = () => E.weather === 'rain' || E.weather === 'storm'; // rain or thunderstorm
   E.icon = () => (E.darkness > 0.5 && E.weather === 'clear' ? '🌙' : ICON[E.weather]);
 
-  const [riseS, setS] = SUN[NB.season] || SUN.summer;
+  // by month when the season isn't forced with ?season= (Swiss time, summer time included)
+  const MONTH_SUN = [['08:10', '16:55'], ['07:40', '17:40'], ['06:55', '18:25'], ['06:50', '20:10'], ['06:05', '20:50'], ['05:30', '21:25'], ['05:45', '21:20'], ['06:25', '20:40'], ['07:10', '19:35'], ['07:55', '18:30'], ['07:35', '17:00'], ['08:10', '16:40']];
+  const [riseS, setS] = NB.params.get('season') ? SUN[NB.season] || SUN.summer : MONTH_SUN[NB.clock.month - 1];
   const rise = NB.toMin(riseS), set = NB.toMin(setS);
   function computeDarkness(min) {
     const tw = 55;
@@ -26,13 +29,16 @@
 
   const fixed = NB.params.get('weather');
   function pickWeather() {
-    const w = WEATHER_WEIGHTS[NB.season] || WEATHER_WEIGHTS.summer;
+    if (NB.cal && NB.cal.christmas) return Math.random() < 0.8 ? 'snow' : 'cloudy'; // white Christmas
+    const w = Object.assign({}, WEATHER_WEIGHTS[NB.season] || WEATHER_WEIGHTS.summer);
+    if (NB.cal && NB.cal.advent) w.snow = (w.snow || 0) + 3;
     let r = Math.random() * Object.values(w).reduce((s, v) => s + v, 0);
     for (const k in w) { r -= w[k]; if (r <= 0) return k; }
     return 'clear';
   }
   E.weather = fixed || pickWeather();
   let weatherLeft = NB.rr(240, 600);
+  E.setWeather = function (w) { E.weather = w; weatherLeft = 900; if (w !== 'storm') E.flash = 0; }; // settings panel: stays a while
 
   // bells from the Heiligkreuz-Kapelle tower
   let lastHour = Math.floor(NB.clock.minutes() / 60);
@@ -60,6 +66,18 @@
         if (NB.season === 'winter' && E.weather === 'rain' && Math.random() < 0.6) E.weather = 'snow';
       }
     }
+    // thunderstorm: lightning flashes now and then, thunder a moment later
+    if (E.flash > 0) E.flash = Math.max(0, E.flash - dt * 3);
+    if (E.weather === 'storm') {
+      E.boltT = (E.boltT == null ? NB.rr(3, 8) : E.boltT) - dt;
+      if (E.boltT <= 0) {
+        E.boltT = NB.rr(6, 18); E.flash = 1;
+        setTimeout(() => NB.Audio.play('thunder', { vol: NB.rr(0.6, 1) }), NB.rr(300, 2200));
+        if (NB.UI && NB.UI.discover) NB.UI.discover('storm');
+      }
+    }
+    // the streets stay wet for a while after rain (puddles)
+    E.wetT = E.wet() ? Math.min(E.wetT + dt, 600) : Math.max(0, E.wetT - dt);
     const hour = Math.floor(min / 60);
     if (hour !== lastHour) { lastHour = hour; if (hour >= 7 && hour <= 22) E.ringBells(hour % 12 || 12); }
   };

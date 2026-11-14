@@ -22,16 +22,23 @@
   // kind: heart | note | dust | ripple | fish | angry | steam | smoke | fire | water
   U.fx = function (x, y, z, kind, o) {
     o = o || {};
-    U.fxs.push({ x, y, z, kind, vy: o.vy || 0.8, life: o.life || 1.2, t: 0, wob: Math.random() * 6, size: o.size || 1 });
+    U.fxs.push({ x, y, z, kind, vy: o.vy == null ? 0.8 : o.vy, vx: o.vx || 0, vz: o.vz || 0, g: o.g || 0, drag: o.drag || 0, col: o.col, life: o.life || 1.2, t: 0, wob: Math.random() * 6, size: o.size || 1, tail: o.tail || 0, onEnd: o.onEnd });
   };
 
   U.update = function (dt) {
     U.bubbles.forEach((b) => (b.t += dt));
     U.bubbles = U.bubbles.filter((b) => b.t < b.life && !b.owner.inside && !b.owner.done);
-    U.fxs.forEach((f) => { f.t += dt; f.y += f.vy * dt; });
+    const embers = [];
+    U.fxs.forEach((f) => {
+      f.t += dt; f.y += f.vy * dt; f.x += f.vx * dt; f.z += f.vz * dt; f.vy -= f.g * dt;
+      if (f.drag) { const k = Math.max(0, 1 - f.drag * dt); f.vx *= k; f.vz *= k; f.vy *= k; }
+      if (f.kind === 'rocket' && Math.random() < 0.7) embers.push({ x: f.x, y: f.y - 0.3, z: f.z, kind: 'ember', vy: -0.5, vx: 0, vz: 0, g: 1, drag: 0, life: 0.5, t: 0, wob: 0, size: 1 });
+      if (f.onEnd && f.t >= f.life) { const cb = f.onEnd; f.onEnd = null; cb(f); }
+    });
+    if (embers.length) U.fxs.push(...embers);
     U.fxs = U.fxs.filter((f) => f.t < f.life);
     const clock = document.getElementById('clock');
-    if (clock) clock.textContent = NB.Env.icon() + ' ' + NB.clock.label();
+    if (clock) clock.textContent = (NB.clock.paused ? '⏸️ ' : '') + NB.Env.icon() + ' ' + NB.clock.label() + (NB.clock.speed !== 1 && !NB.clock.paused ? ' ⏩' + NB.clock.speed + '×' : '');
   };
 
   function wrap(ctx, text, maxW) {
@@ -70,10 +77,29 @@
     }
     // floating effects
     for (const f of U.fxs) {
-      const p = toScreen(f.x + Math.sin(f.t * 4 + f.wob) * 0.1, f.y, f.z);
+      const p = toScreen(f.x + (f.g ? 0 : Math.sin(f.t * 4 + f.wob) * 0.1), f.y, f.z);
       if (!p) continue;
       const a = NB.clamp(1 - f.t / f.life, 0, 1);
       ctx.globalAlpha = a;
+      if (f.kind === 'spark') { // a star with a short streak behind it, twinkling as it dies
+        const r = Math.max(2.5, v.zoom * 1.9), q = toScreen(f.x - f.vx * (0.1 + f.tail * 0.25), f.y - f.vy * (0.1 + f.tail * 0.25), f.z - f.vz * (0.1 + f.tail * 0.25)), tw = a < 0.35 && Math.sin(f.t * 40 + f.wob) < 0 ? 0.3 : 1;
+        ctx.strokeStyle = f.col; ctx.lineWidth = Math.max(1, r * 0.5); ctx.globalAlpha = a * 0.45 * tw;
+        if (q) { ctx.beginPath(); ctx.moveTo(q[0], q[1]); ctx.lineTo(p[0], p[1]); ctx.stroke(); }
+        ctx.fillStyle = f.col; ctx.globalAlpha = a * 0.3 * tw; ctx.fillRect(Math.round(p[0] - r * 1.2), Math.round(p[1] - r * 1.2), Math.ceil(r * 2.4), Math.ceil(r * 2.4));
+        ctx.globalAlpha = a * tw; ctx.fillRect(Math.round(p[0] - r / 2), Math.round(p[1] - r / 2), Math.ceil(r), Math.ceil(r));
+        ctx.fillStyle = '#ffffff'; ctx.globalAlpha = a * a * tw; ctx.fillRect(Math.round(p[0] - r / 4), Math.round(p[1] - r / 4), Math.ceil(r / 2), Math.ceil(r / 2));
+        continue;
+      }
+      if (f.kind === 'flash') { // the moment of the bang: a soft glow lighting the sky
+        const R = 26 * v.zoom * (0.6 + f.t / f.life), g = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], R);
+        g.addColorStop(0, f.col); g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a * 0.55; ctx.fillStyle = g; ctx.fillRect(p[0] - R, p[1] - R, R * 2, R * 2); ctx.globalCompositeOperation = 'source-over';
+        continue;
+      }
+      if (f.kind === 'ember') { ctx.globalAlpha = a; ctx.fillStyle = '#ffb040'; const r = Math.max(1.5, v.zoom * 0.8); ctx.fillRect(Math.round(p[0] - r / 2), Math.round(p[1] - r / 2), Math.ceil(r), Math.ceil(r)); continue; }
+      if (f.kind === 'rocket') { ctx.globalAlpha = 1; ctx.fillStyle = '#fff2c0'; const r = Math.max(2, v.zoom); ctx.fillRect(Math.round(p[0] - r / 2), Math.round(p[1] - r / 2), Math.ceil(r), Math.ceil(r * 1.5)); continue; }
+      if (f.kind === 'confetti') { ctx.globalAlpha = a; ctx.fillStyle = f.col; ctx.fillRect(Math.round(p[0]), Math.round(p[1]), Math.max(2, v.zoom), Math.max(1, v.zoom * 0.6)); continue; }
+      if (f.kind === 'crumb') { ctx.globalAlpha = a; ctx.fillStyle = '#e8c890'; ctx.fillRect(Math.round(p[0]), Math.round(p[1]), Math.max(2, v.zoom), Math.max(2, v.zoom)); continue; }
       if (f.kind === 'dust') { ctx.fillStyle = '#f3e6cc'; ctx.beginPath(); ctx.arc(p[0], p[1], 4 + f.t * 10, 0, Math.PI * 2); ctx.fill(); }
       else if (f.kind === 'steam') { ctx.globalAlpha = a * 0.7; ctx.fillStyle = '#eef0f4'; ctx.beginPath(); ctx.arc(p[0], p[1], (2 + f.t * 3) * NB.view.zoom, 0, Math.PI * 2); ctx.fill(); }
       else if (f.kind === 'smoke') { ctx.globalAlpha = a * 0.55; ctx.fillStyle = '#3a3538'; ctx.beginPath(); ctx.arc(p[0], p[1], (3 + f.t * 4) * f.size * NB.view.zoom, 0, Math.PI * 2); ctx.fill(); }
@@ -90,6 +116,59 @@
       else { ctx.font = '20px ' + FONT; ctx.fillStyle = f.kind === 'heart' ? '#ff4f7a' : '#fff6c0'; ctx.fillText(f.kind === 'heart' ? '❤' : '♪', p[0], p[1]); }
     }
     ctx.globalAlpha = 1;
+    // Advent: fairy lights along the eaves at night (twinkling)
+    if (NB.xmasLines && NB.Env.darkness > 0.25) {
+      const tw = performance.now() / 1000, cols = ['#ff5a5a', '#ffd23f', '#5ab4ff', '#7dff8a', '#ff9af0'];
+      ctx.globalAlpha = NB.clamp((NB.Env.darkness - 0.25) * 2, 0, 1);
+      NB.xmasLines.forEach((l, li) => {
+        const A = toScreen(l.a[0], l.y, l.a[1]), B = toScreen(l.b[0], l.y, l.b[1]);
+        if (!A || !B || (A[0] < -50 && B[0] < -50) || (A[0] > v.w + 50 && B[0] > v.w + 50)) return;
+        const n = Math.max(3, Math.round(Math.hypot(B[0] - A[0], B[1] - A[1]) / (5 * v.zoom)));
+        for (let k = 0; k <= n; k++) {
+          if (Math.sin(tw * 2 + k * 1.7 + li) < -0.6) continue;
+          const x = A[0] + (B[0] - A[0]) * k / n, y = A[1] + (B[1] - A[1]) * k / n + Math.sin(k / n * Math.PI) * 2 * v.zoom;
+          ctx.fillStyle = cols[(k + li) % 5]; const r = Math.max(2, v.zoom * 1.2); ctx.fillRect(Math.round(x - r / 2), Math.round(y - r / 2), Math.ceil(r), Math.ceil(r));
+        }
+      });
+      ctx.globalAlpha = 1;
+    }
+    // Louis's football: a shadow on the grass, the ball above it
+    const ball = NB.map.tanjaGarden && NB.map.tanjaGarden.ball;
+    if (ball) {
+      const g = toScreen(ball.x, 0, ball.z), p = toScreen(ball.x, 0.22 + ball.y, ball.z), r = Math.max(2.5, v.zoom * 1.5);
+      if (g && p[0] > -20 && p[0] < v.w + 20 && p[1] > -20 && p[1] < v.h + 20) {
+        ctx.globalAlpha = 0.35; ctx.fillStyle = '#180f28'; ctx.beginPath(); ctx.ellipse(g[0], g[1], r, r * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1; ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#2a2030'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#2a2030'; ctx.fillRect(Math.round(p[0] - r * 0.3), Math.round(p[1] - r * 0.3), Math.max(1, Math.round(r * 0.6)), Math.max(1, Math.round(r * 0.6)));
+      }
+    }
+    // lanterns (Räbeliechtli): a glowing turnip on a stick, bright at dusk
+    if (NB.Env.darkness > 0.15) {
+      const d = NB.clamp((NB.Env.darkness - 0.15) * 1.6, 0, 1), t = performance.now() / 1000;
+      for (const e of NB.Entities.list) {
+        if (!e.lantern || e.done) continue;
+        const p = toScreen(e.x, 0.9, e.z); if (!p || p[0] < -40 || p[0] > v.w + 40 || p[1] < -40 || p[1] > v.h + 40) continue;
+        const x = p[0] + 3 * v.zoom, y = p[1] + Math.sin(t * 3 + e.gap) * 0.6 * v.zoom, R = 15 * v.zoom * (0.9 + Math.sin(t * 9 + e.gap) * 0.08);
+        const g = ctx.createRadialGradient(x, y, 0, x, y, R); g.addColorStop(0, 'rgba(255,190,90,0.6)'); g.addColorStop(0.35, 'rgba(255,160,60,0.22)'); g.addColorStop(1, 'rgba(255,150,40,0)');
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = d; ctx.fillStyle = g; ctx.fillRect(x - R, y - R, R * 2, R * 2); ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1; ctx.strokeStyle = '#5a3d22'; ctx.lineWidth = Math.max(1, v.zoom * 0.4); ctx.beginPath(); ctx.moveTo(p[0] + v.zoom, p[1] - 3 * v.zoom); ctx.lineTo(x, y - 1.5 * v.zoom); ctx.stroke();
+        const r = Math.max(2.5, v.zoom * 1.4); ctx.fillStyle = e.lantern; ctx.fillRect(Math.round(x - r / 2), Math.round(y - r / 2), Math.ceil(r), Math.ceil(r));
+        ctx.fillStyle = '#fff2b0'; ctx.globalAlpha = 0.5 + d * 0.5; ctx.fillRect(Math.round(x - r / 4), Math.round(y - r / 4), Math.ceil(r / 2), Math.ceil(r / 2)); ctx.globalAlpha = 1;
+      }
+    }
+    // umbrellas over everyone outside when it rains
+    if (NB.Env.wet && NB.Env.wet()) {
+      const ucol = ['#d52b1e', '#2f6fb5', '#2f8a4a', '#e8c23a', '#7a4aa0', '#1f1d22'];
+      for (const e of NB.Entities.list) {
+        if (e.kind !== 'villager' || e.inside || e.away || !e.visible) continue;
+        const p = toScreen(e.x, 2.55 + (e.hopY ? e.hopY() : 0), e.z); if (!p || p[0] < -40 || p[0] > v.w + 40) continue;
+        const r = 7 * v.zoom * 0.5 + 3;
+        ctx.fillStyle = ucol[(e.name.length + e.name.charCodeAt(0)) % ucol.length];
+        ctx.beginPath(); ctx.arc(p[0], p[1], r, Math.PI, 0); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = 'rgba(30,20,40,0.8)'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(p[0], p[1] + r * 0.9); ctx.stroke();
+      }
+    }
     // fishing rods: from the hand to a tip over the water, line down to a bobbing float
     const now = performance.now() / 1000;
     for (const e of NB.Entities.list) {
@@ -142,6 +221,7 @@
     }
     // the crew leader keeps a name tag while fighting the fire (so you can spot Raphy)
     for (const e of NB.Entities.list) if (e.kind === 'firefighter' && e.d && e.d.lead && e.state !== 'back' && !U.bubbles.some((b) => b.owner === e)) { const t = e.top(), p = toScreen(t.x, t.y, t.z); tag(ctx, '🚒 ' + e.name, p[0], p[1]); }
+    if (NB.Games) NB.Games.draw(ctx);
     // hover name
     const h = U.hover;
     if (h && !U.bubbles.some((b) => b.owner === h.owner)) {
@@ -196,6 +276,34 @@
     { id: 'kuba', name: 'De Kuba bellt', icon: '🐶', hint: 'De Kuba bellt jede andere Hund aa.' },
     { id: 'deer', name: 'Hirsch verschreckt', icon: '🦌', hint: 'Uf de Hirschfarm a de Niederwilerstrass…' },
     { id: 'racer', name: 'De Raser', icon: '🏎️', hint: 'Am Abig uf de Bremgarterstrass.' },
+    { id: 'fireworks', name: 'Füürwerk', icon: '🎆', hint: 'Am 1. August, wenn\'s dunkel isch.' },
+    { id: 'bonfire', name: '1.-August-Füür', icon: '🔥', hint: 'Am 1. August am Abig, uf em Fäld.' },
+    { id: 'gugge', name: 'Guggemusig', icon: '🎺', hint: 'A de Fasnacht zieht öppis Lauts dur s\'Dorf.' },
+    { id: 'eggs', name: 'Alli Oschtereier', icon: '🥚', hint: 'A Oschtere sind i de Gärte Eier versteckt.' },
+    { id: 'storm', name: 'Gwitter', icon: '⛈️', hint: 'Im Summer chan\'s blitze und donnere.' },
+    { id: 'mouse', name: 'Es Gschänk vo de Chatz', icon: '🐭', hint: 'D\'Luna und d\'Mina gönd uf Muusjagd.' },
+    { id: 'owl', name: 'De Uhu', icon: '🦉', hint: 'Znacht, bi de Kapälle, uf emene Baum.' },
+    { id: 'hedgehog', name: 'Igel', icon: '🦔', hint: 'Znacht schnüfflet öpper dur d\'Gärte.' },
+    { id: 'fox', name: 'De Fuchs', icon: '🦊', hint: 'Znacht über d\'Strooss…' },
+    { id: 'stork', name: 'Storch', icon: '🪶', hint: 'Im Früehlig uf de Fälder.' },
+    { id: 'cow', name: 'D\'Chüeh', icon: '🐄', hint: 'Vo Mai bis Oktober uf de Weid.' },
+    { id: 'combine', name: 'Mähdrescher', icon: '🌾', hint: 'Im Juli wird s\'Chorn dröschet.' },
+    { id: 'feeding', name: 'Hirsch-Füetere', icon: '🚜', hint: 'De Hirschbuur füeteret am Morge und am Abig.' },
+    { id: 'zopf', name: 'Sunntigszopf', icon: '🍞', hint: 'Am Sunntigmorge bi de Iris.' },
+    { id: 'jeep', name: 'De Jeep am Morge', icon: '🚙', hint: 'Am Siebni am Ifangweg isch\'s lut.' },
+    { id: 'ducks', name: 'Ente gfüeteret', icon: '🦆', hint: 'Tipp uf de Löli-Weiher.' },
+    { id: 'boule', name: 'De André gschlage', icon: '🎯', hint: 'Tipp uf d\'Boule-Bahn, wenn de André dihei isch.' },
+    { id: 'quest', name: 'Uftrag erledigt', icon: '📜', hint: 'Öpper im Dorf bruucht jede Tag Hilf.' },
+    { id: 'search', name: 'Gfunde!', icon: '🔍', hint: 'Spiel «Wo isch…?» (🔍).' },
+    { id: 'aussicht', name: 'S\'Wegchrüz mit Uussicht', icon: '🌄', hint: 'Am Schänisweg, i de erschte Kurve noch de Hüüser.' },
+    { id: 'iisebahn', name: 'D\'Gartebahn vom Ernst', icon: '🚂', hint: 'Am Ifangweg 18 fahrt öppis Chliises im Kreis.' },
+    { id: 'goal', name: 'Goal im Garte', icon: '⚽', hint: 'Am Ifangweg 17 tschuttet öpper uf em Rase.' },
+    { id: 'raebeli', name: 'Räbeliechtli-Umzug', icon: '🏮', hint: 'Im November, wenn\'s dunkel wird, ziehnd Chind dur s\'Dorf.' },
+    { id: 'samichlaus', name: 'De Samichlaus', icon: '🎅', hint: 'Am 6. Dezämber am Abig bim Nochberschind.' },
+    { id: 'silvester', name: 'Es guets Neus!', icon: '🥂', hint: 'Silvester um Mitternacht uf de Feschtwiese.' },
+    { id: 'maert', name: 'Dorfmärt mit Rösslispiel', icon: '🎠', hint: 'Im September, es Wuchenänd lang.' },
+    { id: 'gmv', name: 'Gmeiversammlig', icon: '🗳️', hint: 'Im Juni und im November, am Friitig im Casino.' },
+    { id: 'fondue', name: 'Fondue-Plausch', icon: '🫕', hint: 'Im Winter am Abig: wo isch s\'Fänschter so warm?' },
   ];
   const found = new Set(store.get('found', []));
   let toastT = 0;
@@ -223,7 +331,11 @@
     fischerplatz: 'am Löli-Weiher', weiher: 'am Löli-Weiher', kapelle: 'bi de Kapälle', bushalt: 'a de Bushaltestell', garte: 'im Garte', fuurstell: 'a de Füürstell',
     hirschgehege: 'bim Hirschgehege', fuettern: 'bi de Hirsch', verkauf: 'am Kürbisstand', kuerbismarkt: 'am Kürbismärt', quartier: 'im Quartier', feld: 'uf em Fäld',
     weide: 'uf de Weid', milchzentrale: 'bi de Milchzentrale', ifangweg: 'am Ifangweg', kapellenweg: 'am Kapälleweg', niederwilerstrasse: 'a de Niederwilerstrass',
-    unterdorf: 'im Unterdorf', reuss: 'a de Reuss', wald: 'im Wald', gartebahn: 'bi de Gartebahn', niederwil: 'z Niederwil', gnadenthal: 'im Gnadenthal', tankstelle: 'a de Tankstell',
+    terrasse17: 'uf em Sitzplatz am Ifangweg 17', garte17: 'im Garte am Ifangweg 17', fuessball: 'am Tschutte im Garte ⚽', boulebank: 'uf em Bänkli bi de Kochs', hortensien: 'bi de Hortensie vo de Monika',
+    aussicht: 'bim Bänkli mit Uussicht 🌄', feldwaeg: 'uf em Spaziergang am Schänisweg 🚶', nesselnbacherstrasse: 'a de Nesselnbacherstrass', schaenisweg: 'am Schänisweg',
+    fest: 'am Dorffest', silvester: 'am Silvester uf de Feschtwiese 🎆', maert: 'am Dorfmärt', rossli: 'bim Rösslispiel 🎠', chaes: 'am Chässtand', gmues: 'am Gmüesstand',
+    chlaus: 'bim Samichlaus 🎅', schneemaa: 'bim Schneemaa', jeep: 'bim Jeep',
+    unterdorf: 'im Unterdorf', reuss: 'a de Reuss', wald: 'im Wald', gartebahn: 'bi de Gartebahn vom Ernst', iisebahn: 'bi sinere Gartebahn', niederwil: 'z Niederwil', gnadenthal: 'im Gnadenthal', tankstelle: 'a de Tankstell',
   };
   const placeName = (k) => {
     if (!k) return 'unterwägs';
@@ -244,8 +356,12 @@
         if (e.fishing) return 'fischt heimlich am Löli-Weiher 🎣';
         if (e.worried && e.worried.state === 'roam') return 'macht sich Sorge um de ' + e.worried.name;
         if (e.act === 'walk') return 'Gassirunde mit em Kuba 🐕';
-        if (e.act === 'garden') return 'schaffet im Garte 🌸';
+        if (e.act === 'garden') return e.c.helps ? 'hilft em Papi im Garte 🌱' : e.c.id === 'nuria' ? 'hilft de Iris im Garte 🌸' : 'schaffet im Garte 🌸';
         if (e.act === 'boule') return 'spielt Boule 🎯';
+        if (e.act === 'railway' && !e.path) return 'spielt mit sinere Gartebahn 🚂';
+        if (e.act === 'play' && !e.path) return 'spielt Fangis mit de ' + (e.c.id === 'iris' ? 'Nuria' : 'Iris') + ' 😄';
+        if (e.goalKey === 'schwatz' && !e.path) return 'schwatzt am Wägli 💬';
+        if (e.act === 'football' && !e.path) return 'tschuttet im Garte ⚽';
         if (e.guarding) return 'kontrolliert sin Weiher';
         if (e.moving) return 'unterwägs, ' + placeName(e.goalKey).replace(/^(bi|am|im|uf|a|z) /, 'zu ').replace(/^zu (de|em) /, 'zu $1 ');
         return (e.seated ? 'hocket ' : '') + placeName(e.goalKey || e.currentGoal().place);
@@ -260,10 +376,15 @@
       case 'deer': return { graze: 'frisst Gras', lie: 'liit im Gras', walk: 'spaziert', stand: 'luegt umenand' }[e.state] || 'im Gehege';
       case 'duck': return e.state === 'dip' ? 'tunkt ab 🦆' : 'schwümmt';
       case 'firefighter': return e.spray ? 'löscht! 💦' : 'im Iisatz';
+      case 'train': return e.train.v > 0.05 ? 'fahrt im Kreis 🚂' : 'staht im Bahnhof';
+      case 'gugge': return 'schränzt dur s\'Dorf 🎺';
+      case 'raebeli': return 'am Räbeliechtli-Umzug 🏮';
+      case 'chlaus': return e.moving ? 'unterwägs zum Nochberschind' : 'bim Nochberschind vor de Tür';
+      case 'shopper': return e.state === 'shop' ? 'chauft ii' : e.state === 'go' ? 'gaht go poschte' : 'gaht hei';
       default: return e.moving === false || e.parked ? 'parkiert' : 'fahrt';
     }
   }
-  const ICON = { villager: '🧑', dog: '🐕', cat: '🐈', deer: '🦌', duck: '🦆', firefighter: '🚒', vehicle: '🚗', tractor: '🚜' };
+  const ICON = { villager: '🧑', dog: '🐕', cat: '🐈', deer: '🦌', duck: '🦆', firefighter: '🚒', vehicle: '🚗', tractor: '🚜', gugge: '🎺', raebeli: '🏮', chlaus: '🎅', shopper: '🛍️', train: '🚂' };
   function cardHtml(e) {
     const L = NB.Entities.list, rows = [];
     const add = (k, v) => v && rows.push(`<div class="row"><span>${k}</span><b>${v}</b></div>`);
@@ -272,6 +393,9 @@
       add('🏠', c.visitor ? (c.from ? 'wohnt z ' + c.from : 'Bsuech') + (e.home ? ' · parkiert bim ' + e.home.name : '') : e.home && 'wohnt ' + (e.home.addr ? 'a de ' + e.home.addr : 'im ' + e.home.name));
       add('👀', doing(e));
       if (c.rel) add('💛', c.rel);
+      const named = (ids) => ids.map((id) => (L.find((v) => v.c && v.c.id === id) || { name: id }).name).join(' und ');
+      if (c.parents) add('👨‍👩‍👧', 'Eltere: ' + named(c.parents));
+      if (c.kids) add('🧒', 'Chind: ' + named(c.kids));
       const mates = L.filter((v) => v !== e && v.kind === 'villager' && v.home === e.home && !v.c.visitor && !c.visitor).map((v) => v.name);
       if (mates.length) add('👥', 'wohnt mit ' + mates.join(', '));
       const pets = L.filter((a) => a.kind === 'dog' && a.owner === e).map((a) => a.name);
@@ -283,7 +407,7 @@
       add('🏠', e.a.area === 'hof' ? 'wohnt uf em Hof bi de Mige' : 'streunt ' + placeName(e.a.area)); add('👀', doing(e)); if (e.a.about) add('ℹ️', e.a.about);
     } else if (e.kind === 'firefighter') {
       add('🏠', 'Füürwehr Niederwil'); add('👀', doing(e));
-    } else add('👀', doing(e));
+    } else { add('👀', doing(e)); if (e.about) add('ℹ️', e.about); }
     return `<div class="title">${ICON[e.type === 'tractor' ? 'tractor' : e.kind] || '•'} ${e.name}</div>${rows.join('')}`;
   }
   let cardFor = null, cardT = 0;
@@ -307,11 +431,13 @@
     muteBtn.addEventListener('click', () => { NB.Audio.unlock(); NB.Audio.setMuted(!NB.Audio.muted); setMuteLabel(); });
     document.getElementById('centre').addEventListener('click', actions.centre);
     document.getElementById('cardclose').addEventListener('click', () => actions.unfollow());
+    document.getElementById('search').addEventListener('click', () => { NB.Audio.unlock(); NB.Games.startSearch(); });
     const fp = document.getElementById('found');
-    document.getElementById('discover').addEventListener('click', () => fp.classList.toggle('hidden'));
+    document.getElementById('discover').addEventListener('click', () => { fp.classList.toggle('hidden'); document.getElementById('settings').classList.add('hidden'); });
     document.getElementById('foundclose').addEventListener('click', () => fp.classList.add('hidden'));
     window.addEventListener('keydown', (e) => { if (e.key === 'Escape') { actions.unfollow(); fp.classList.add('hidden'); } });
     renderFound();
+    NB.Settings.init({ muteChanged: setMuteLabel });
     document.getElementById('findcat').addEventListener('click', () => { NB.Audio.unlock(); actions.findCat(); });
     document.getElementById('zoomin').addEventListener('click', () => actions.zoom(0.8));
     document.getElementById('zoomout').addEventListener('click', () => actions.zoom(1.25));

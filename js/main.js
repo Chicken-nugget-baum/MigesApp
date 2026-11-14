@@ -22,7 +22,7 @@
   world.addChild(ground, objects);
   const lights = new PIXI.Container();           // same transform as `world`, drawn above the night tint
   const fullRect = (blend) => { const g = new PIXI.Graphics().rect(0, 0, 1, 1).fill(0xffffff); g.blendMode = blend; g.alpha = 0; return g; };
-  const weatherDim = fullRect('multiply'), night = fullRect('multiply'), fog = fullRect('normal');
+  const weatherDim = fullRect('multiply'), night = fullRect('multiply'), fog = fullRect('normal'), flash = fullRect('add'); // flash: lightning
   const weather = new PIXI.Container();
   const C = (h) => parseInt(h.slice(1), 16);
 
@@ -49,7 +49,7 @@
   // ---------- buildings: snapped boxes in the (u, v) frame, drawn back to front ----------
   const blds = S.buildings.map((spec, i) => {
     const [u, v] = I.rot(spec.cx, spec.cz);
-    const h = (spec.kind === 'garage' ? 3.2 : spec.levels * 2.9 + 0.6 + Math.min(5.5, Math.min(spec.w, spec.d) * 0.42)) + (spec.kind === 'chapel' ? 8 : 0);
+    const h = (spec.kind === 'garage' ? 3.2 : spec.roof === 'flat' ? spec.levels * 2.8 + 0.9 : spec.levels * 2.9 + 0.6 + Math.min(5.5, Math.min(spec.w, spec.d) * 0.42)) + (spec.kind === 'chapel' ? 8 : 0);
     return { spec, i, h, u0: u - spec.w / 2, u1: u + spec.w / 2, v0: v - spec.d / 2, v1: v + spec.d / 2 };
   });
   const NBLD = blds.length;
@@ -129,12 +129,13 @@
     occupied.push([K.bench.x, K.bench.z]);
     if (K.parking) occupied.push([K.parking.x, K.parking.z]);
   }
-  const freeSpot = (x, z, streetGap, bGap, gap) => map.streetDist(x, z) > streetGap && !map.inBuilding(x, z, bGap) && !map.fieldAt(x, z) && map.pondDist(x, z) > 4 && !(map.farmProps && (Math.hypot(x - map.farmProps.table.x, z - map.farmProps.table.z) < 5.5 || (map.farmProps.parking && Math.hypot(x - map.farmProps.parking.x, z - map.farmProps.parking.z) < 4))) && !(map.fuel && Math.hypot(x - map.fuel.x, z - map.fuel.z) < 17) && !(map.deer && (map.deer.inside(x, z, -2.5) || (map.deer.stand && Math.hypot(x - map.deer.stand.x, z - map.deer.stand.z) < 5))) && !(map.irisGarden && map.irisGarden.inside(x, z, 2)) && !occupied.some(([ox, oz]) => Math.hypot(ox - x, oz - z) < gap);
+  const freeSpot = (x, z, streetGap, bGap, gap) => map.streetDist(x, z) > streetGap && !map.inBuilding(x, z, bGap) && !map.fieldAt(x, z) && map.pondDist(x, z) > 4 && !(map.farmProps && (Math.hypot(x - map.farmProps.table.x, z - map.farmProps.table.z) < 5.5 || (map.farmProps.parking && Math.hypot(x - map.farmProps.parking.x, z - map.farmProps.parking.z) < 4))) && !(map.fuel && Math.hypot(x - map.fuel.x, z - map.fuel.z) < 17) && !(map.deer && (map.deer.inside(x, z, -2.5) || (map.deer.stand && Math.hypot(x - map.deer.stand.x, z - map.deer.stand.z) < 5))) && !(map.irisGarden && map.irisGarden.inside(x, z, 2)) && !(map.tanjaGarden && map.tanjaGarden.inside(x, z, 2)) && !occupied.some(([ox, oz]) => Math.hypot(ox - x, oz - z) < gap);
   for (let k = 0; k < 1200 && occupied.length < 280; k++) {
     const x = NB.lerp(bx0 + 10, bx1 - 10, rnd()), z = NB.lerp(bz0 + 10, bz1 - 10, rnd());
     if (!freeSpot(x, z, 3.5, 3, 6)) continue;
-    placeStatic(M.tree(rnd() < 0.2 ? 'pine' : 'leaf', (rnd() * 8) | 0), x, 0, z, zkey(x, z));
-    occupied.push([x, z]);
+    const kind = rnd() < 0.2 ? 'pine' : 'leaf';
+    placeStatic(M.tree(kind, (rnd() * 8) | 0), x, 0, z, zkey(x, z));
+    occupied.push([x, z]); (NB.trees = NB.trees || []).push({ x, z, kind });
   }
   for (let k = 0; k < 900; k++) {
     const x = NB.lerp(bx0 + 10, bx1 - 10, rnd()), z = NB.lerp(bz0 + 10, bz1 - 10, rnd());
@@ -146,7 +147,7 @@
   // ---------- lamps with ground glow ----------
   const lamps = [];
   for (const s of S.streets) {
-    if (s.kind === 'track' || s.kind === 'main') continue; // no lamps on the field track and the country road
+    if (s.kind === 'track' || s.kind === 'main' || s.kind === 'lane') continue; // no lamps on the field track, the country road, the lane
     const pl = polyline(s.pts);
     for (let d = 12, side = 1; d < pl.len - 4; d += 30, side = -side) {
       const p = pl.at(d), off = s.width / 2 + 1.4;
@@ -245,7 +246,7 @@
       s.pts.forEach(([x, z], k) => (k ? tg.lineTo((x - tx0) * TM, (z - tz0) * TM) : tg.moveTo((x - tx0) * TM, (z - tz0) * TM)));
       tg.stroke();
     };
-    for (const s of S.streets) if (s.kind !== 'track' && s.kind !== 'main') stroke(s, s.width + 2.4, '#ff0000');
+    for (const s of S.streets) if (s.kind !== 'track' && s.kind !== 'main' && s.kind !== 'lane') stroke(s, s.width + 2.4, '#ff0000'); // sidewalks (not on the little lane)
     for (const s of S.streets) if (s.kind === 'main') stroke(s, s.width + 1.2, '#ff00ff'); // gravel shoulder
     for (const s of S.streets) if (s.kind === 'track') stroke(s, s.width, '#ff00ff'); // gravel
     for (const s of S.streets) if (s.kind !== 'track') stroke(s, s.width, '#00ff00');
@@ -284,6 +285,28 @@
         else if (Math.hypot(x - G.pit.x, z - G.pit.z) < 2.6) terrain[i] = 3;
         else if (a > G.veg.a0 && a < G.veg.a1 && m > G.veg.m0 && m < G.veg.m1) { terrain[i] = 6; fang[i] = bucket; }
         else if (pathPts.some((q) => Math.hypot(q.x - x, q.z - z) < 0.6)) terrain[i] = 9;
+      }
+    }
+    // the viewpoint: meadow round the bench, a little gravel under it
+    if (map.viewpoint) {
+      const V = map.viewpoint, ix0 = Math.max(0, Math.floor((V.x - 6 - tx0) * TM)), ix1 = Math.min(tw, Math.ceil((V.x + 6 - tx0) * TM)), iz0 = Math.max(0, Math.floor((V.z - 6 - tz0) * TM)), iz1 = Math.min(th, Math.ceil((V.z + 6 - tz0) * TM));
+      for (let iz = iz0; iz < iz1; iz++) for (let ix = ix0; ix < ix1; ix++) {
+        const x = tx0 + (ix + 0.5) / TM, z = tz0 + (iz + 0.5) / TM, d = Math.hypot(x - V.x, z - V.z);
+        if (d > 5) continue;
+        const i = iz * tw + ix;
+        if (terrain[i] >= 4 && terrain[i] <= 6) terrain[i] = 0;
+        if (d < 1.6 && terrain[i] === 0) terrain[i] = 9;
+      }
+    }
+    // Ifangweg 17: lawn (no crops), the paved terrace south and west of the house
+    if (map.tanjaGarden) {
+      const G = map.tanjaGarden;
+      for (let iz = 0; iz < th; iz++) for (let ix = 0; ix < tw; ix++) {
+        const x = tx0 + (ix + 0.5) / TM, z = tz0 + (iz + 0.5) / TM;
+        if (!G.inside(x, z, 1)) continue;
+        const i = iz * tw + ix, [u, v] = G.local(x, z);
+        if (terrain[i] >= 4 && terrain[i] <= 6) terrain[i] = 0;
+        if (terrain[i] === 0 && G.terrace.some(([u0, u1, v0, v1]) => u > u0 && u < u1 && v > v0 && v < v1)) terrain[i] = 3;
       }
     }
     // the deer paddock: grass (no crops), worn earth at the gate, the rack and the shelter
@@ -447,6 +470,66 @@
     put(M.shed(G.shedHeading), G.shed);
   }
 
+  // ---------- Ifangweg 17: terrace table, beds, hedges, the tree, Louis's football goal ----------
+  if (map.tanjaGarden) {
+    const G = map.tanjaGarden, put = (rec, p, bias) => placeStatic(rec, p.x, 0, p.z, zkey(p.x, p.z) + (bias || 0));
+    const trec = M.table();
+    pickables.push({ sprite: put(trec, G.table), rec: trec, info: { name: 'Sitzplatz vo de Tanja', lines: ['Am Wuchenänd gits do Brunch. 🥐', 'De Rase isch s\'Fuessballfäld vom Louis.', 'D\'Nuria het do Chriide-Zeichnige gmacht.'], sound: 'clink', top: { x: G.table.x, y: 1.6, z: G.table.z } } });
+    G.chairs.forEach((c) => put(M.stool(), c));
+    G.beds.forEach((b, i) => put(M.flowerBed(i + 3), b));
+    G.hedges.forEach((h) => put(M.hedge(h.len, h.h), h.p));
+    put(M.tree('leaf', 3), G.tree); occupied.push([G.tree.x, G.tree.z]);
+    const grec = M.footballGoal(G.hU);
+    pickables.push({ sprite: put(grec, G.goal), rec: grec, info: { name: 'Goal vom Louis', lines: ['S\'Goal vom Louis. ⚽', 'Do schüsst de Louis jede Tag sini Penalty.', 'S\'Netz het scho es Loch.'], sound: 'pop', top: { x: G.goal.x, y: 2, z: G.goal.z } } });
+  }
+
+  // ---------- Ifangweg 18: Ernst's garden railway – gravel beds with the tracks painted flat, little houses on top ----------
+  if (map.railway) {
+    const R = map.railway, rr = NB.seeded(1835);
+    for (const b of R.beds) {
+      const loops = R.loops.filter((L) => L.bed === b.name), all = b.outline.concat(...loops.map((L) => L.pts)).map((p) => I.project(p.x, 0, p.z));
+      const x0 = Math.floor(Math.min(...all.map((q) => q[0]))) - 3, y0 = Math.floor(Math.min(...all.map((q) => q[1]))) - 3;
+      const [c, g] = NB.canvas(Math.max(...all.map((q) => q[0])) - x0 + 4, Math.max(...all.map((q) => q[1])) - y0 + 4);
+      const P = (p, dx, dz) => { const q = I.project(p.x + (dx || 0), 0, p.z + (dz || 0)); return [q[0] - x0, q[1] - y0]; };
+      g.beginPath(); b.outline.forEach((p, i) => { const [x, y] = P(p); if (i) g.lineTo(x, y); else g.moveTo(x, y); }); g.closePath();
+      g.fillStyle = '#c4bdb0'; g.fill(); g.save(); g.clip();
+      for (let k = 0; k < c.width * c.height * 0.12; k++) { g.fillStyle = rr() < 0.5 ? '#aaa397' : '#d6d0c4'; g.fillRect((rr() * c.width) | 0, (rr() * c.height) | 0, 1, 1); }
+      for (let k = 0; k < 14; k++) { g.fillStyle = rr() < 0.5 ? '#5f8f45' : '#7aa85a'; const x = (rr() * c.width) | 0, y = (rr() * c.height) | 0; g.fillRect(x, y, 2, 2); } // moss and little plants
+      g.restore();
+      g.strokeStyle = '#8a8478'; g.lineWidth = 2; g.stroke(); // border stones
+      for (const L of loops) {
+        const n = L.pts.length;
+        for (let i = 0; i < n; i += 1) { // sleepers across the track
+          const p = L.pts[i], q = L.pts[(i + 1) % n], dx = q.x - p.x, dz = q.z - p.z, l = Math.hypot(dx, dz) || 1, nx = -dz / l * 0.13, nz = dx / l * 0.13;
+          const [ax, ay] = P(p, nx, nz), [bx, by] = P(p, -nx, -nz);
+          g.strokeStyle = '#6e5038'; g.lineWidth = 1; g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
+        }
+        for (const side of [1, -1]) { // the two rails
+          g.strokeStyle = '#4a4a52'; g.lineWidth = 1; g.beginPath();
+          for (let i = 0; i <= n; i++) { const p = L.pts[i % n], q = L.pts[(i + 1) % n], dx = q.x - p.x, dz = q.z - p.z, l = Math.hypot(dx, dz) || 1, [x, y] = P(p, (-dz / l) * 0.08 * side, (dx / l) * 0.08 * side); if (i) g.lineTo(x, y); else g.moveTo(x, y); }
+          g.stroke();
+        }
+      }
+      const rec = I.wrap(c, 0, 0), sp = new PIXI.Sprite(rec.tex); sp.x = x0; sp.y = y0; sp.zIndex = -1; objects.addChild(sp);
+      pickables.push({ sprite: sp, rec, info: { name: 'Gartebahn vom Ernst', lines: ['De Ernst sini Gartebahn – Spur G, wetterfescht. 🚂', 'Über 60 Meter Gleis, alles sälber verleit.', 'Bahnhof Nesselnbach-Ifang: alles iistiege!', 'Psst – nöd uf d\'Gleis stah!'], sound: 'whistle', top: { x: b.outline[0].x, y: 1, z: b.outline[0].z } } });
+    }
+    for (const d of R.decor) { const rec = M.miniProp(d.kind, d.v); placeStatic(rec, d.p.x, 0, d.p.z, zkey(d.p.x, d.p.z)); }
+  }
+
+  // ---------- the viewpoint on the Schänisweg: bench and wayside cross ----------
+  if (map.viewpoint) {
+    const V = map.viewpoint, brec = M.bench(V.face), crec = M.wayCross(V.face);
+    pickables.push({ sprite: placeStatic(brec, V.bench.x, 0, V.bench.z, zkey(V.bench.x, V.bench.z)), rec: brec, info: { name: 'Bänkli mit Uussicht', lines: ['Vo do gseht mer ganz Nesselnbach. 🌄', 'Am schönschte isch es bim Sunneundergang.', 'S\'Bänkli het de Verkehrsverein gstiftet.'], sound: 'click', top: { x: V.bench.x, y: 1.4, z: V.bench.z }, discover: 'aussicht' } });
+    pickables.push({ sprite: placeStatic(crec, V.cross.x, 0, V.cross.z, zkey(V.cross.x, V.cross.z)), rec: crec, info: { name: 'Wegchrüz am Schänisweg', lines: ['Es alts Wegchrüz. Öpper bringt immer früschi Blueme. 🌼', 'Do hälted d\'Lüüt churz aa.', 'Grüess Gott.'], sound: 'bell', top: { x: V.cross.x, y: 3.6, z: V.cross.z }, discover: 'aussicht' } });
+  }
+
+  // ---------- the cow pasture: fence round it (4 m pieces) ----------
+  if (map.cowField && !['winter'].includes(NB.season)) {
+    const [x0, z0, x1, z1] = map.cowField;
+    const line = (ax, az, bx, bz) => { const len = Math.hypot(bx - ax, bz - az), n = Math.ceil(len / 4), h = Math.atan2(bx - ax, bz - az); for (let k = 0; k < n; k++) { const t = (k + 0.5) / n, x = ax + (bx - ax) * t, z = az + (bz - az) * t; placeStatic(M.fence(len / n, h, false), x, 0, z, zkey(x, z)); } };
+    line(x0, z0, x1, z0); line(x0, z1, x1, z1); line(x0, z0, x0, z1); line(x1, z0, x1, z1);
+  }
+
   // ---------- Hirschfarm: fence in short segments (own depth each), gate, rack, shelter, pumpkin market ----------
   if (map.deer) {
     const D = map.deer, hT = Math.atan2(D.t[0], D.t[1]), hN = Math.atan2(D.n[0], D.n[1]);
@@ -509,6 +592,109 @@
     }
   }
 
+  // ---------- festivals and seasons (NB.cal, js/util.js; places: js/world.js) ----------
+  const flags = [], nightLights = [], grillSmoke = [];
+  let snowmanS = null;
+  const C2 = NB.cal || {};
+  if (C2.fest) {
+    // flags at the houses: Swiss, now and then the Aargau one; on the side of the door, a step out
+    S.buildings.forEach((spec, i) => {
+      const b = map.buildings[spec.id];
+      if (!['house', 'farmhouse', 'beiz', 'dairy'].includes(b.kind) || (i * 0.618) % 1 > 0.75) return;
+      const t = [-b.doorN[1], b.doorN[0]], side = i % 2 ? 1 : -1;
+      const x = b.entryPt.x + b.doorN[0] * 0.6 + t[0] * side * 2.2, z = b.entryPt.z + b.doorN[1] * 0.6 + t[1] * side * 2.2;
+      if (map.inBuilding(x, z, 0.3) || map.streetDist(x, z) < 0.5) return;
+      const kind = i % 5 === 0 ? 'ag' : 'ch', rec = M.flag(kind, 0);
+      flags.push({ s: placeStatic(rec, x, 0, z, zkey(x, z)), kind, ph: i });
+    });
+    const F = map.fest;
+    if (F) {
+      const put = (rec, p, info) => { const sp = placeStatic(rec, p.x, 0, p.z, zkey(p.x, p.z)); if (info) pickables.push({ sprite: sp, rec, info: Object.assign({ sound: 'click', top: { x: p.x, y: 3, z: p.z } }, info) }); return sp; };
+      put(M.festTent(F.heading), F.tent, { name: 'Festzelt', lines: ['125 Johr Niederwil-Nesselnbach! 🇨🇭', 'Bier, Most und Bratwürscht – alles do.', 'Am Abig spielt d\'Musig.', 'Prost uf die nöchschte 125 Johr!'], sound: 'clink' });
+      put(M.grill(F.heading), F.grill, { name: 'Grill', lines: ['Bratwurscht oder Cervelat? 🌭', 'Mit Senf, natürlich.', 'Zwei Bratwürscht, eis Brot – 8 Franke.'] });
+      grillSmoke.push(F.grill);
+      F.tables.forEach((t) => put(M.festTable(F.heading + Math.PI / 2), t));
+      put(M.banner(F.heading + Math.PI), F.banner, { name: '125 Johr Niederwil-Nesselnbach', lines: ['1901–2026: 125 Johr zäme – Niederwil und Nesselnbach. 🎉', 'Dorffest am 31. Juli und am 1. August.', 'Hopp Niederwil-Nesselnbach!'] });
+    }
+    if (map.bonfire) {
+      const rec = M.woodPile(false), p = map.bonfire;
+      pickables.push({ sprite: placeStatic(rec, p.x, 0, p.z, zkey(p.x, p.z)), rec, info: { name: '1.-August-Füür', lines: ['Am 1. August am Abig wird das aazündet. 🔥', 'Höhefüür wie überall i de Schwiiz.', 'Hoffentli rägnets nöd!'], sound: 'click', top: { x: p.x, y: 4, z: p.z } } });
+    }
+  }
+  if (C2.advent && map.xmasTree) {
+    const p = map.xmasTree, rec = M.xmasTree();
+    pickables.push({ sprite: placeStatic(rec, p.x, 0, p.z, zkey(p.x, p.z)), rec, info: { name: 'Wiehnachtsbaum', lines: ['De Dorf-Wiehnachtsbaum. 🎄', 'Am Abig lüchte d\'Liechtli.', 'Schöni Adväntsziit!'], sound: 'bell', top: { x: p.x, y: 5.5, z: p.z } } });
+    if (rec.light) { const l = placeStatic({ tex: rec.light, ox: rec.ox, oy: rec.oy }, p.x, 0, p.z, 0, lights); l.alpha = 0; nightLights.push(l); }
+    // fairy lights along the eaves of the houses facing the viewer (drawn by NB.UI at night)
+    NB.xmasLines = [];
+    blds.forEach((bl, i) => {
+      const spec = bl.spec;
+      if (!['house', 'farmhouse', 'beiz'].includes(spec.kind) || (i * 0.618) % 1 > 0.7) return;
+      const y = spec.levels * 2.9 + 0.5, w = (u, v) => { const q = I.unrot(u, v); return [q[0], q[1]]; };
+      NB.xmasLines.push({ a: w(bl.u1 + 0.1, bl.v0), b: w(bl.u1 + 0.1, bl.v1), y }, { a: w(bl.u0, bl.v1 + 0.1), b: w(bl.u1, bl.v1 + 0.1), y });
+    });
+  }
+  // Dorfmärt: the stands and the Rösslispiel (turns from 10 to 5)
+  let carousel = null;
+  if (C2.maert && map.maert) {
+    for (const st of map.maert.stands) {
+      const rec = M.marketStand(st.heading, st.awning, st.goods);
+      pickables.push({ sprite: placeStatic(rec, st.x, 0, st.z, zkey(st.x, st.z)), rec, info: { name: st.name, lines: st.lines, sound: 'clink', top: { x: st.x, y: 3, z: st.z } } });
+    }
+    const p = map.maert.carousel, rec = M.carousel(0);
+    carousel = { p, f: 0, t: 0, s: placeStatic(rec, p.x, 0, p.z, zkey(p.x, p.z)) };
+    carousel.info = { name: 'Rösslispiel', lines: ['Es Rössli-Billett: 2 Franke. 🎠', 'Rundume, rundume…', 'S\'wiisse Rössli isch s\'schnällscht!'], sound: 'pop', top: { x: p.x, y: 4.5, z: p.z } };
+    pickables.push({ sprite: carousel.s, rec, info: carousel.info });
+    carousel.pick = pickables[pickables.length - 1];
+  }
+  // Gmeiversammlig: the notice by the Casino door
+  const beizB = map.buildings.beiz;
+  if (C2.gmv && beizB) {
+    const t = [-beizB.doorN[1], beizB.doorN[0]], x = beizB.entryPt.x + beizB.doorN[0] * 0.8 + t[0] * 2, z = beizB.entryPt.z + beizB.doorN[1] * 0.8 + t[1] * 2, rec = M.sign();
+    pickables.push({ sprite: placeStatic(rec, x, 0, z, zkey(x, z)), rec, info: { name: 'Gmeiversammlig', lines: ['Hüt, 20:00 im Casino: Gmeiversammlig. 🗳️', 'Traktande: Budget ' + (NB.clock.year + 1) + ', Strassesanierig Ifangweg, Verschiedenes.', 'Alli Stimmbürgerinne und Stimmbürger sind iiglade.'], sound: 'click', top: { x, y: 1.9, z } } });
+  }
+  if (NB.season === 'winter' && map.snowman) {
+    const p = map.snowman;
+    snowmanS = { p, stage: 0, s: null };
+  }
+  // the dairy is rebuilt for a few days after a fire (remembered in localStorage): scaffolding round it
+  const dairyB = Object.values(map.buildings).find((b) => b.kind === 'dairy');
+  const fireAt = NB.UI.store.get('fireAt', 0);
+  if (dairyB && fireAt && Date.now() - fireAt < 3 * 86400000) {
+    const bl = blds[S.buildings.findIndex((q) => q.id === dairyB.id)], rec = M.scaffold(bl.spec.w, bl.spec.d, bl.spec.levels * 2.9 + 1);
+    const sp = placeStatic(rec, dairyB.cx, 0, dairyB.cz, bl.slot * SLOT + SLOT - 1);
+    pickables.push({ sprite: sp, rec, info: { name: 'Grüst', lines: ["D'Gehrigs baue d'Milchzentrale wieder uf. 🏗️", 'Nach em Brand: alles neu, diesmal mit Füürmelder.', 'Betrete verbote – Baustell!'], sound: 'knock', top: { x: dairyB.cx, y: bl.h, z: dairyB.cz } } });
+    map.rebuilding = true;
+  }
+  let flagT = 0, smokeT = 0;
+  function updateSeason(dt) {
+    flagT += dt; smokeT -= dt;
+    if (flags.length && Math.floor(flagT * 2.5) !== Math.floor((flagT - dt) * 2.5)) for (const f of flags) f.s.texture = M.flag(f.kind, (Math.floor(flagT * 2.5) + f.ph) % 2).tex;
+    if (smokeT <= 0) { smokeT = 0.35; for (const g of grillSmoke) if (NB.UI.onScreen(g, 120) && NB.inWindow(NB.clock.minutes(), '11:00', '23:30')) NB.UI.fx(g.x + NB.rr(-0.3, 0.3), 1.2, g.z + NB.rr(-0.2, 0.2), 'steam', { vy: 1.2, life: 2 }); }
+    if (carousel && NB.Fest.carouselOn() && (carousel.t += dt) > 0.16) { // turning
+      carousel.t = 0; carousel.f = (carousel.f + 1) % 8;
+      const rec = M.carousel(carousel.f); carousel.s.texture = rec.tex; carousel.pick.rec = rec;
+    }
+    if (NB.Fest.fondue && smokeT === 0.35) for (const f of NB.Fest.fondue) { // fondue: a wisp of steam from the chimney
+      const b = f.host, h = houses.find((q) => q.b === b), c = h && h.rec.chimney, x = c ? b.cx + c[0] : b.top.x, z = c ? b.cz + c[1] : b.top.z, y = c ? c[2] : b.top.y - 1;
+      if (NB.Fest.warm(b) && b.inside.size && NB.UI.onScreen(b.top, 100)) NB.UI.fx(x + NB.rr(-0.15, 0.15), y, z + NB.rr(-0.15, 0.15), 'steam', { vy: NB.rr(0.8, 1.3), life: 2.4 });
+    }
+    const d = NB.Env.darkness;
+    for (const l of nightLights) l.alpha = NB.clamp(d * 1.6, 0, 1) * (0.85 + Math.sin(flagT * 3) * 0.15);
+    if (snowmanS) { // built bit by bit in the morning while it's snowy
+      const m = NB.clock.minutes(), st = m < NB.toMin('09:30') ? 0 : m < NB.toMin('10:15') ? 1 : m < NB.toMin('11:00') ? 2 : 3;
+      if (st !== snowmanS.stage) {
+        snowmanS.stage = st;
+        if (snowmanS.s) { objects.removeChild(snowmanS.s); const k = pickables.findIndex((q) => q.sprite === snowmanS.s); if (k >= 0) pickables.splice(k, 1); snowmanS.s = null; }
+        if (st) {
+          const rec = M.snowman(st), p = snowmanS.p;
+          snowmanS.s = placeStatic(rec, p.x, 0, p.z, zkey(p.x, p.z));
+          pickables.push({ sprite: snowmanS.s, rec, info: { name: 'Schneemaa', lines: st < 3 ? ['Do entstoht en Schneemaa! ⛄', 'No nöd fertig…'] : ['⛄ Fertig: de Nesselnbacher Schneemaa!', 'Mit Rüebli-Nase und Zylinder.', 'Er schmilzt erst im März.'], sound: 'pop', top: { x: p.x, y: 2.4, z: p.z } } });
+        }
+      }
+    }
+  }
+
   // ---------- weather particles (screen space) ----------
   const PN = 360;
   const particles = [];
@@ -520,14 +706,28 @@
       particles.push({ s, x: NB.rr(0, 2000), y: NB.rr(0, 1200), rainTex, snowTex, ph: NB.rr(0, 6) });
     }
   }
+  // puddles on the streets after rain (flat, under everything on the ground)
+  const puddles = [];
+  {
+    const r = NB.seeded(404), pal = (a) => { const [c, g] = NB.canvas(18, 8); g.fillStyle = 'rgba(150,175,205,0.75)'; g.beginPath(); g.ellipse(9, 4, 8 * a, 3.2 * a, 0, 0, Math.PI * 2); g.fill(); g.fillStyle = 'rgba(230,240,255,0.6)'; g.fillRect(6, 3, 3, 1); return PIXI.Texture.from(c); };
+    const texs = [pal(1), pal(0.75), pal(0.55)];
+    for (const st of S.streets) for (let i = 1; i < st.pts.length && puddles.length < 70; i++) {
+      if (r() > 0.45) continue;
+      const [ax, az] = st.pts[i - 1], [bx, bz] = st.pts[i], t = r(), x = ax + (bx - ax) * t + (r() - 0.5) * 3, z = az + (bz - az) * t + (r() - 0.5) * 3;
+      const p = I.project(x, 0, z), sp = new PIXI.Sprite(texs[Math.floor(r() * 3)]);
+      sp.x = Math.round(p[0]) - 9; sp.y = Math.round(p[1]) - 4; sp.zIndex = -1; sp.alpha = 0; objects.addChild(sp); puddles.push(sp);
+    }
+  }
   function updateWeather(dt) {
-    const w = NB.Env.weather, on = w === 'rain' || w === 'snow';
+    const pa = NB.clamp(NB.Env.wetT / 90, 0, 1);
+    for (const sp of puddles) sp.alpha = pa;
+    const w = NB.Env.weather, on = NB.Env.wet() || w === 'snow';
     weather.visible = on;
     if (!on) return;
-    const rain = w === 'rain', t = performance.now() / 1000;
+    const rain = NB.Env.wet(), storm = w === 'storm', t = performance.now() / 1000;
     for (const p of particles) {
       p.s.texture = rain ? p.rainTex : p.snowTex;
-      p.y += (rain ? 520 : 55) * dt; p.x += rain ? -60 * dt : Math.sin(t * 1.5 + p.ph) * 18 * dt;
+      p.y += (rain ? (storm ? 720 : 520) : 55) * dt; p.x += rain ? (storm ? -160 : -60) * dt : Math.sin(t * 1.5 + p.ph) * 18 * dt;
       if (p.y > H + 8) { p.y = -8; p.x = NB.rr(0, W + 60); }
       if (p.x < -8) p.x += W + 16; else if (p.x > W + 8) p.x -= W + 16;
       p.s.x = Math.round(p.x); p.s.y = Math.round(p.y);
@@ -549,11 +749,16 @@
     // night tint (multiply): warm at dusk, deep blue at night
     night.tint = toHex(mix('#ffb48a', '#2c3a78', NB.clamp(d * 1.3, 0, 1)));
     night.alpha = NB.clamp(d * 0.9 + dusk * 0.28, 0, 0.9);
-    weatherDim.tint = C('#aeb6c4');
-    weatherDim.alpha = { cloudy: 0.3, rain: 0.42, snow: 0.22, fog: 0.2 }[w] || 0;
+    weatherDim.tint = C(w === 'storm' ? '#6e7686' : '#aeb6c4');
+    weatherDim.alpha = { cloudy: 0.3, rain: 0.42, storm: 0.6, snow: 0.22, fog: 0.2 }[w] || 0;
+    flash.alpha = NB.Env.flash * 0.75;
     fog.tint = C(SKY.fog);
     fog.alpha = w === 'fog' ? 0.5 : 0;
-    for (const h of houses) if (h.light) h.light.alpha = NB.Env.windowLit(h.b, h.seed) ? NB.clamp(d * 1.6, 0, 1) : 0;
+    for (const h of houses) if (h.light) {
+      const warm = NB.Fest.warm(h.b) && h.b.inside.size; // a fondue evening: every window lit, warmer
+      h.light.alpha = warm || NB.Env.windowLit(h.b, h.seed) ? NB.clamp(d * 1.6, 0, 1) : 0;
+      h.light.tint = warm ? 0xffb070 : 0xffffff;
+    }
     const on = d > 0.25;
     for (const l of lamps) { l.head.alpha = on ? 1 : 0; l.glow.alpha = on ? NB.clamp(d, 0, 1) * 0.7 : 0; }
   }
@@ -590,7 +795,7 @@
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     uiCanvas.width = W * dpr; uiCanvas.height = H * dpr; uiCanvas.style.width = W + 'px'; uiCanvas.style.height = H + 'px';
     uctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    [weatherDim, night, fog].forEach((g) => g.scale.set(W, H));
+    [weatherDim, night, fog, flash].forEach((g) => g.scale.set(W, H));
   }
 
   // ---------- picking (pixel-perfect on the sprite alpha masks) ----------
@@ -633,6 +838,8 @@
       if (dairyClicks === 4) { NB.UI.say(b.top, 'Hey, nid so fescht klopfe! Das Huus isch neu!'); NB.Audio.play('door', { pos: b.top }); return; }
       if (dairyClicks === 6) { NB.UI.say(b.top, 'Es schmöckt irgendwie verbrännt… 👃'); NB.Audio.play('door', { pos: b.top }); return; }
     }
+    const special = NB.Fest.buildingLine(b); // the Gmeiversammlig, a fondue evening
+    if (special) { NB.UI.say(b.top, special); NB.Audio.play(b.kind === 'beiz' ? 'clink' : 'knock', { pos: b.top }); return; }
     // knock three times (within a few seconds) and whoever is at home comes to the door
     const now = performance.now() / 1000, kn = knocks.get(b);
     const knock = kn && now - kn.t < 4 ? kn.n + 1 : 1; knocks.set(b, { n: knock, t: now });
@@ -654,13 +861,16 @@
     }
     NB.UI.say(b.top, text);
   }
+  // the point on the ground under a screen position
+  function groundAt(sx, sy) { const [x, z] = I.pxToWorld((sx - world.x) / cam.zoom, (sy - world.y) / cam.zoom); return { x, z }; }
   function tapAt(sx, sy) {
     NB.Audio.unlock();
     const h = pick(sx, sy);
+    if (NB.Games.tap(h, groundAt(sx, sy))) { if (h && h.entity) { follow = h.entity; NB.UI.showCard(h.entity); } return; } // games / quest first
     if (!h) { follow = null; NB.UI.showCard(null); return; } // a tap on empty ground lets go
     if (h.entity) { h.entity.click(); follow = h.entity; NB.UI.showCard(h.entity); } // the camera follows, the card shows who it is
     else if (h.building) clickBuilding(h.building);
-    else if (h.info) { const n = clickCount.get(h.info) || 0; clickCount.set(h.info, n + 1); NB.UI.say(h.info.top, h.info.lines[n % h.info.lines.length]); NB.Audio.play(h.info.sound, { pos: h.info.top }); }
+    else if (h.info) { const n = clickCount.get(h.info) || 0; clickCount.set(h.info, n + 1); NB.UI.say(h.info.top, h.info.lines[n % h.info.lines.length]); if (h.info.sound === 'bell') NB.Audio.bell({ pos: h.info.top, vol: 0.4, rate: 1.6 }); else NB.Audio.play(h.info.sound, { pos: h.info.top }); if (h.info.discover) NB.UI.discover(h.info.discover); }
   }
 
   // ---------- input: drag = pan, wheel / pinch = zoom, tap = click, hold (450 ms) on a cat = purr ----------
@@ -754,14 +964,14 @@
 
   // ---------- loop ----------
   function frame(dtMs) {
-    const dt = NB.clamp(dtMs / 1000, 0, 0.05);
+    const real = NB.clamp(dtMs / 1000, 0, 0.05), dt = NB.clock.paused ? 0 : real; // paused: the camera still moves
     frameNo++;
-    updateDairy(dt);
-    updateFollow(dt); clampCam(); applyCamera(); saveCam(dt);
+    updateDairy(dt); updateSeason(dt);
+    updateFollow(real); clampCam(); applyCamera(); saveCam(real);
     updateView();
     NB.Env.update(dt);
     NB.Entities.update(dt);
-    NB.UI.update(dt); NB.UI.updateCard(dt);
+    NB.UI.update(dt); NB.UI.updateCard(real); NB.Games.update(dt);
     NB.Audio.update(dt, NB.Env);
     updateGround(); updateSky(); updateWeather(dt);
     NB.UI.draw(uctx);
@@ -772,7 +982,7 @@
       canvas, width: window.innerWidth, height: window.innerHeight, antialias: false, resolution: 1, autoDensity: false,
       background: SKY.day, preference: 'webgl', preserveDrawingBuffer: !!NB.params.get('nointro'), roundPixels: true,
     });
-    app.stage.addChild(world, weatherDim, night, lights, weather, fog);
+    app.stage.addChild(world, weatherDim, night, lights, weather, fog, flash);
     resize();
     window.addEventListener('resize', resize);
     applyCamera(); updateView();
@@ -784,6 +994,8 @@
       zoom: (f) => zoomStep(f < 1 ? 1 : -1),
     });
     app.ticker.maxFPS = 60;
+    NB.loadMs = Math.round(performance.now());
+    if (NB.onReady) NB.onReady();
     app.ticker.add((t) => { try { frame(t.deltaMS); } catch (e) { showError('Fehler: ' + e.message + '\n' + e.stack); app.ticker.stop(); } });
   }
   startGame().catch((e) => showError('Fehler: ' + e.message + '\n' + e.stack));

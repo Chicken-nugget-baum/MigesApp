@@ -1,6 +1,6 @@
 // Animals: cats, dogs (Mariana's Border Collies, Karin's Kuba), the deer of the Hirschfarm, the ducks on the Weiher.
 (function (NB) {
-  const { E, I, map, place, say, Mover } = NB.Ent;
+  const { E, I, map, add, place, say, Mover } = NB.Ent;
   // ---------------------------------------------------------------- cats
   class Cat extends Mover {
     constructor(a) {
@@ -36,11 +36,13 @@
         return this.pose(dt);
       }
       if (this.state === 'walk') { if (this.stepPath(dt)) { this.state = 'idle'; this.timer = NB.rr(2, 8); } return this.pose(dt); }
+      if (this.state === 'stalk' || this.state === 'crouch' || this.state === 'carry') { this.updateHunt(dt); return this.pose(dt); }
       this.timer -= dt;
       if (this.timer <= 0) {
         const r = Math.random();
         const dog = this.a.dogs && NB.Env.darkness < 0.6 ? E.list.find((o) => o.kind === 'dog' && !o.away && !o.rider && !o.a.leash && o.state === 'follow' && Math.hypot(o.x - this.x, o.z - this.z) < 7) : null;
         if (dog && r < 0.35) { this.mount(dog); }
+        else if (this.a.hunter && r > 0.88 && NB.Env.darkness < 0.85 && this.startHunt()) { /* off hunting */ }
         else if (r < this.sleepy()) { this.state = 'sleep'; this.timer = NB.rr(20, 60); }
         else if (r < 0.6) {
           const t = map.randomIn(this.area, this.cost);
@@ -49,6 +51,34 @@
         } else { this.state = 'sit'; this.timer = NB.rr(3, 10); }
       }
       this.pose(dt);
+    }
+    // ---- hunting mice (Luna and Mina, `hunter`): creep up on a spot in the grass, crouch, pounce; sometimes they
+    //      catch one and bring it to the Sitzplatz as a present ----
+    startHunt() {
+      const t = map.randomIn([this.x - 25, this.z - 25, this.x + 25, this.z + 25], this.cost);
+      if (!t || map.streetDist(t.x, t.z) < 2 || !this.goTo(t.x, t.z)) return false;
+      this.state = 'stalk'; this.speed = 0.8;
+      return true;
+    }
+    updateHunt(dt) {
+      if (this.state === 'stalk') { if (this.stepPath(dt)) { this.state = 'crouch'; this.timer = NB.rr(3, 7); } return; }
+      if (this.state === 'crouch') {
+        this.moving = false; this.timer -= dt;
+        if (this.timer > 0) return;
+        this.hopT = 0.3; NB.UI.fx(this.x, 0.15, this.z, 'dust', { vy: 0.4, life: 0.5 }); // pounce!
+        const sp = map.spots && map.spots.sitzplatz && map.spots.sitzplatz[0];
+        if (Math.random() < 0.45 && sp && this.goTo(sp.x + NB.rr(-1.5, 1.5), sp.z + NB.rr(-1.5, 1.5))) { this.state = 'carry'; this.speed = 1.6; this.speak(NB.pick(['Mrrmpf! 🐭', '*stolz*', 'Mmmrp!'])); }
+        else { this.state = 'sit'; this.timer = NB.rr(3, 6); this.speed = 1.4; if (Math.random() < 0.4) this.speak(NB.pick(['…', 'Mrrr. Verpasst.', '*tuet so, als wär nüt gsi*'])); }
+        return;
+      }
+      if (this.stepPath(dt)) { // a present at the Sitzplatz
+        this.state = 'sit'; this.timer = NB.rr(6, 12); this.speed = 1.4;
+        add(new Mouse(this.x + 0.6, this.z + 0.3));
+        this.speak(NB.pick(['Miau! Es Gschänk! 🎁', 'Mrrp. Für dich.', 'Lueg, was ich bracht ha!']));
+        if (NB.UI.onScreen(this)) NB.UI.discover('mouse');
+        const m = E.list.find((v) => v.kind === 'villager' && v.c.id === 'mige' && !v.away && !v.inside && Math.hypot(v.x - this.x, v.z - this.z) < 25);
+        if (m) m.later = { t: 1.5, line: NB.pick([`Iiih, ${this.name}! Scho wieder e Muus!`, `${this.name}, nei! Nöd scho wieder e Gschänk!`, 'Danke… glaub. 🐭']) };
+      }
     }
     // ---- riding on a dog's back (Luna and Mina love Mariana's dogs) ----
     mount(dog) {
@@ -101,8 +131,10 @@
       if (moving) { const f = I.facing(this.heading); if (f === 'e' || f === 'se' || f === 'ne') this.dir = 'right'; else if (f === 'w' || f === 'sw' || f === 'nw') this.dir = 'left'; }
       const F = this.frames;
       if (this.state === 'ride') { place(this, F.sit[this.dir], this.x, 0.6, this.z, 1); return; }
-      const set = moving ? F.walk[Math.floor(this.anim * (zoom ? 14 : 6)) % 2] : this.state === 'sleep' ? F.sleep : F.sit;
-      place(this, set[this.dir], this.x, hop, this.z);
+      const set = moving ? F.walk[Math.floor(this.anim * (zoom ? 14 : this.state === 'stalk' ? 4 : 6)) % 2] : this.state === 'sleep' || this.state === 'crouch' ? F.sleep : F.sit;
+      const pounce = this.hopT > 0 && !zoom ? Math.sin((this.hopT / 0.3) * Math.PI) * 0.5 : 0;
+      if (this.hopT > 0 && !zoom) this.hopT -= dt || 0.016;
+      place(this, set[this.dir], this.x, hop + pounce, this.z);
     }
     click() {
       const now = performance.now() / 1000;
@@ -388,6 +420,106 @@
     top() { return { x: this.x, y: 1.1, z: this.z }; }
   }
 
+  // ---------------------------------------------------------------- small animals and visitors of the night
+  // a mouse the cats brought (lies at the Sitzplatz until someone clicks it away)
+  class Mouse {
+    constructor(x, z) { this.kind = 'mouse'; this.name = 'Muus (es Gschänk)'; this.x = x; this.z = z; this.t = 600; this.sprite = new PIXI.Sprite(); place(this, NB.Models.mouse(), x, 0, z); }
+    update(dt) { if ((this.t -= dt) <= 0) { this.done = true; NB.world.remove(this.sprite); } }
+    click() { say({ x: this.x, y: 0.8, z: this.z }, NB.pick(['Iiih! 🐭', 'Es Gschänk vo de Chatze…', 'Wäg demit!']), { life: 2 }); NB.Audio.play('pop', { pos: this }); this.done = true; NB.world.remove(this.sprite); }
+    get visible() { return true; }
+    top() { return { x: this.x, y: 0.5, z: this.z }; }
+  }
+  const night = () => NB.Env.darkness > 0.6;
+  const sideOf = (h) => { const f = I.facing(h); return f === 'e' || f === 'se' || f === 'ne' ? 'right' : f === 'w' || f === 'sw' || f === 'nw' ? 'left' : null; };
+  // the owl on a tree near the chapel: blinks, hoots at night, invisible by day
+  class Owl {
+    constructor(tree) { this.kind = 'owl'; this.name = 'Uhu'; this.x = tree.x; this.z = tree.z; this.y = tree.kind === 'pine' ? 5.2 : 4.4; this.sprite = new PIXI.Sprite(); this.hootT = NB.rr(5, 20); this.blinkT = 2; }
+    update(dt) {
+      this.sprite.visible = night();
+      if (!this.sprite.visible) return;
+      this.blinkT -= dt; this.hootT -= dt;
+      if (this.hootT <= 0) { this.hootT = NB.rr(25, 70); if (NB.UI.onScreen(this, 200)) { NB.Audio.play('owl', { pos: this }); setTimeout(() => NB.Audio.play('owl', { pos: this, rate: 0.95 }), 700); say(this, 'Huu-huu…', { quiet: true, life: 2 }); } }
+      const F = NB.Models.owl();
+      place(this, this.blinkT < 0.15 ? F.shut : F.open, this.x, this.y, this.z, 4);
+      if (this.blinkT < 0) this.blinkT = NB.rr(2, 5);
+    }
+    click() { NB.UI.discover('owl'); say(this, NB.pick(['Huu-huu! 🦉', 'Huuu?', '*dreiht de Chopf ganz ume*']), { life: 2.2 }); NB.Audio.play('owl', { pos: this }); this.blinkT = 0.1; }
+    get visible() { return night(); }
+    top() { return { x: this.x, y: this.y + 1.2, z: this.z }; }
+  }
+  // a hedgehog snuffling through the gardens at night; clicked = rolls into a ball
+  class Hedgehog extends Mover {
+    constructor() {
+      super(0, 0, map.animalCost, 0.5); this.kind = 'hedgehog'; this.name = 'Igel'; this.sprite = new PIXI.Sprite(); this.ballT = 0; this.waitT = 0; this.dir = 'right';
+      const s = map.randomIn([map.start.x - 60, map.start.z - 60, map.start.x + 60, map.start.z + 60], this.cost) || map.start; this.x = s.x; this.z = s.z;
+    }
+    update(dt) {
+      this.sprite.visible = night();
+      if (!this.sprite.visible) return;
+      if (this.ballT > 0) { this.ballT -= dt; this.moving = false; }
+      else if (this.path) this.stepPath(dt);
+      else if ((this.waitT -= dt) <= 0) { this.waitT = NB.rr(2, 6); const t = map.randomIn([this.x - 8, this.z - 8, this.x + 8, this.z + 8], this.cost); if (t && map.streetDist(t.x, t.z) > 1) this.goTo(t.x, t.z); }
+      this.dir = sideOf(this.heading) || this.dir;
+      const F = NB.Models.hedgehog();
+      place(this, (this.ballT > 0 ? F.ball : F.walk[Math.floor(this.anim * 5) % 2])[this.dir], this.x, 0, this.z);
+    }
+    click() { NB.UI.discover('hedgehog'); this.ballT = 6; this.path = null; say(this, NB.pick(['*rollt sich ii* 🦔', 'Pfff!', '…']), { life: 2 }); NB.Audio.play('snort', { pos: this, rate: 1.8, vol: 0.5 }); }
+    get visible() { return night(); }
+    top() { return { x: this.x, y: 0.6, z: this.z }; }
+  }
+  // a fox crossing the road at night: comes out of the fields on one side, trots across, vanishes on the other
+  class Fox {
+    constructor(a, b) { this.kind = 'fox'; this.name = 'Fuchs'; this.a = a; this.b = b; this.x = a.x; this.z = a.z; this.t = 0; this.len = Math.hypot(b.x - a.x, b.z - a.z); this.sprite = new PIXI.Sprite(); this.anim = 0; this.heading = Math.atan2(b.x - a.x, b.z - a.z); this.speed = 3.2; this.yipped = false; }
+    update(dt) {
+      this.t += (this.speed * dt) / this.len; this.anim += dt;
+      if (this.t >= 1) { this.done = true; NB.world.remove(this.sprite); return; }
+      this.x = this.a.x + (this.b.x - this.a.x) * this.t; this.z = this.a.z + (this.b.z - this.a.z) * this.t;
+      if (!this.yipped && this.t > 0.3 && NB.UI.onScreen(this)) { this.yipped = true; NB.Audio.play('yip', { pos: this }); }
+      place(this, NB.Models.fox().walk[Math.floor(this.anim * 8) % 2][sideOf(this.heading) || 'right'], this.x, 0, this.z);
+      this.sprite.alpha = Math.min(1, this.t * 8, (1 - this.t) * 8);
+    }
+    click() { NB.UI.discover('fox'); say(this, NB.pick(['Wau-wau-wau! 🦊', '*huscht devo*']), { life: 1.8 }); NB.Audio.play('yip', { pos: this }); this.speed = 7; }
+    get visible() { return true; }
+    top() { return { x: this.x, y: 0.9, z: this.z }; }
+  }
+  // grazing animals in a rectangle (cows on the pasture, storks on a field): walk, graze / peck, lie down
+  class Grazer {
+    constructor(kind, rect, i) {
+      this.kind = kind; this.rect = rect; this.i = i; this.sprite = new PIXI.Sprite(); this.anim = 0; this.dir = i % 2 ? 'left' : 'right';
+      this.name = kind === 'cow' ? ['Bella', 'Flora', 'Rosa', 'Heidi', 'Lisa', 'Zita'][i % 6] : 'Storch';
+      this.x = NB.rr(rect[0] + 2, rect[2] - 2); this.z = NB.rr(rect[1] + 2, rect[3] - 2); this.state = 'graze'; this.timer = NB.rr(2, 10); this.y = 0; this.flyT = 0;
+    }
+    update(dt) {
+      const R = this.rect, cow = this.kind === 'cow';
+      this.timer -= dt;
+      if (this.state === 'walk' || this.state === 'fly') {
+        const dx = this.tx - this.x, dz = this.tz - this.z, d = Math.hypot(dx, dz), sp = this.state === 'fly' ? 6 : cow ? 0.7 : 0.6;
+        if (d < 0.2) { this.state = cow ? 'graze' : 'peck'; this.timer = NB.rr(4, 12); this.y = 0; }
+        else { this.x += (dx / d) * Math.min(d, sp * dt); this.z += (dz / d) * Math.min(d, sp * dt); this.dir = dx + dz * 0.3 > 0 ? 'right' : 'left'; this.anim += dt; if (this.state === 'fly') { this.flyT += dt; this.y = Math.sin(Math.min(1, 1 - d / this.flyD) * Math.PI) * 6; } }
+      } else if (this.timer <= 0) {
+        const r = Math.random();
+        if (cow && night() && r < 0.8) { this.state = 'lie'; this.timer = NB.rr(40, 120); }
+        else if (r < 0.45) { this.state = 'walk'; this.tx = NB.clamp(this.x + NB.rr(-8, 8), R[0] + 1.5, R[2] - 1.5); this.tz = NB.clamp(this.z + NB.rr(-8, 8), R[1] + 1.5, R[3] - 1.5); }
+        else if (r < 0.85) { this.state = cow ? 'graze' : 'peck'; this.timer = NB.rr(4, 14); }
+        else { this.state = cow ? 'lie' : 'stand'; this.timer = NB.rr(8, 30); }
+      }
+      const F = cow ? NB.Models.cow(this.i) : NB.Models.stork();
+      let set;
+      if (cow) set = this.state === 'walk' ? F.walk[Math.floor(this.anim * 3) % 2] : this.state === 'lie' ? F.lie : this.state === 'graze' ? F.graze : F.walk[0];
+      else set = this.state === 'fly' ? F.fly : this.state === 'walk' ? (Math.floor(this.anim * 3) % 2 ? F.walk : F.stand) : this.state === 'peck' && Math.floor(performance.now() / 600 + this.i) % 3 === 0 ? F.peck : F.stand;
+      place(this, set[this.dir], this.x, this.y, this.z, this.y > 0.5 ? 2000 : 0);
+    }
+    click() {
+      if (this.kind === 'cow') { NB.UI.discover('cow'); say(this, NB.pick(['Muuuh! 🐄', `Ich bi d'${this.name}.`, 'Muh.', '*chäut*']), { life: 2 }); NB.Audio.play('moo', { pos: this, rate: NB.rr(0.85, 1.1) }); }
+      else { // the stork flies to another corner of the field
+        NB.UI.discover('stork'); say(this, NB.pick(['*klapper-klapper* 🪶', 'Klapperklapper!']), { life: 1.8 }); NB.Audio.play('click', { pos: this, rate: 0.6 });
+        const R = this.rect; this.tx = NB.rr(R[0] + 2, R[2] - 2); this.tz = NB.rr(R[1] + 2, R[3] - 2); this.flyD = Math.hypot(this.tx - this.x, this.tz - this.z) || 1; this.state = 'fly'; this.flyT = 0;
+      }
+    }
+    get visible() { return true; }
+    top() { return { x: this.x, y: (this.kind === 'cow' ? 1.8 : 1.6) + this.y, z: this.z }; }
+  }
+
   // ---------------------------------------------------------------- deer in the paddock of the Hirschfarm
   class Deer extends Mover {
     constructor(a) {
@@ -414,6 +546,7 @@
       }
       if (this.state === 'walk') { if (this.stepPath(dt)) { this.state = this.alarm > 0 ? 'stand' : 'graze'; this.timer = NB.rr(3, 10); } return this.pose(dt); }
       this.timer -= dt; this.moving = false;
+      if (NB.Fest.feeding && this.alarm <= 0 && Math.random() < dt * 0.4) { const R = map.deer.rack, x = R.x + NB.rr(-2.5, 2.5), z = R.z + NB.rr(-2.5, 2.5); if (Math.hypot(this.x - R.x, this.z - R.z) > 3.5 && this.goTo(x, z)) { this.state = 'walk'; return this.pose(dt); } } // feeding time: to the rack
       if (this.timer <= 0) {
         const r = Math.random(), night = NB.Env.darkness > 0.5;
         if (night && r < 0.7) { this.state = 'lie'; this.timer = NB.rr(30, 90); }
@@ -495,8 +628,14 @@
       this.boost = 2.5; this.state = 'float'; this.timer = 0.2;
       if (!this.swimTo(30)) this.state = 'float';
     }
+    // bread on the water: paddle over fast, quacking
+    feed(x, z) {
+      this.boost = 4;
+      if (this.goTo(x + NB.rr(-1.2, 1.2), z + NB.rr(-1.2, 1.2))) this.state = 'swim';
+      if (Math.random() < 0.6) setTimeout(() => { say(this, NB.pick(['Quack!', 'Quack quack!', 'Mmh, Brot!']), { quiet: true, life: 1.5 }); NB.Audio.play('quack', { pos: this, rate: (this.a.voice || 1) * NB.rr(0.9, 1.2) }); }, NB.rr(200, 1500));
+    }
     get visible() { return true; }
     top() { return { x: this.x, y: 0.7, z: this.z }; }
   }
-  Object.assign(NB.Ent, { Cat, Dog, Deer, Duck });
+  Object.assign(NB.Ent, { Cat, Dog, Deer, Duck, Mouse, Owl, Hedgehog, Fox, Grazer });
 })(window.NB);

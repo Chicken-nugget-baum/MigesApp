@@ -6,9 +6,9 @@ NB.Data.animals = [
   { kind: 'cat', name: 'Tiger', area: 'niederwilerstrasse', look: { fur: '#9a8a74', dark: '#4a3f33', pattern: 'tabby' }, voice: 0.9 },
   { kind: 'cat', name: 'Schnurrli', area: 'unterdorf', look: { fur: '#2b2b2b', pattern: 'tuxedo' }, voice: 1.0 },
   // Luna: calico (from a photo). Can't talk – only "Miau"/"Mauz". Click = zoomies, hold = purr. Lives at the Buurehuus.
-  { kind: 'cat', name: 'Luna', area: 'hof', about: 'Glückschatz vo de Mige · cha nöd rede, nur Miau.', look: { pattern: 'luna' }, voice: 1.25, zoomies: true, dogs: true, words: ['Miau!', 'Mauz.', 'Miau?', 'Mauuuz!', 'Miiiau.'] },
+  { kind: 'cat', name: 'Luna', area: 'hof', hunter: true, about: 'Glückschatz vo de Mige · cha nöd rede, nur Miau.', look: { pattern: 'luna' }, voice: 1.25, zoomies: true, dogs: true, words: ['Miau!', 'Mauz.', 'Miau?', 'Mauuuz!', 'Miiiau.'] },
   // Mina: calico too, but mostly white. She talks (and isn't shy about it). Lives at the Buurehuus.
-  { kind: 'cat', name: 'Mina', area: 'hof', about: 'Glückschatz vo de Mige · d\'Chefin vom Hof.', look: { pattern: 'mina' }, voice: 1.1, dogs: true,
+  { kind: 'cat', name: 'Mina', area: 'hof', hunter: true, about: 'Glückschatz vo de Mige · d\'Chefin vom Hof.', look: { pattern: 'mina' }, voice: 1.1, dogs: true,
     talk: ['Chlöpfle bitte.', 'Gib mir Snacks, du Schiss!', 'Wo blibt mis Znacht?!', 'Chlöpfle. Jetzt.', "Ich bi d'Chefin vom Hof."] },
   { kind: 'cat', name: 'Fleckli', area: 'kapelle', look: { fur: '#e08a3c', pattern: 'socks' }, voice: 1.15 },
   { kind: 'cat', name: 'Minka', area: 'kapellenweg', look: { fur: '#f2ede4', dark: '#c8b8a0', pattern: 'tabby' }, voice: 1.2 },

@@ -43,6 +43,7 @@ button.pill:hover { background: rgba(60, 48, 80, 0.9); }
   box-shadow: 0 10px 30px rgba(30, 20, 50, 0.35); font-size: 14px; line-height: 1.35;
 }
 .panel.hidden { display: none; }
+.panel { z-index: 10; }
 .panel .title { font-weight: 800; font-size: 18px; margin: 0 26px 6px 0; color: var(--accent); }
 .panel .row { display: flex; gap: 8px; padding: 2px 0; }
 .panel .row span { flex: 0 0 22px; text-align: center; }
@@ -57,7 +58,48 @@ button.pill:hover { background: rgba(60, 48, 80, 0.9); }
   position: fixed; left: 50%; top: 64px; transform: translate(-50%, -20px); opacity: 0; transition: opacity 0.3s, transform 0.3s; pointer-events: none;
   background: var(--accent); color: var(--paper); padding: 8px 16px; border-radius: 999px; font-weight: 800; box-shadow: 0 6px 18px rgba(30, 20, 50, 0.3); white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis;
 }
+#game {
+  position: fixed; left: 50%; top: 12px; transform: translateX(-50%); max-width: calc(100vw - 260px); pointer-events: auto;
+  background: rgba(46, 38, 60, 0.85); color: var(--paper); padding: 7px 14px; border-radius: 999px; font-weight: 700; font-size: 15px; box-shadow: 0 4px 14px rgba(30, 20, 50, 0.3);
+}
+#game.hidden, #quest.hidden { display: none; }
+#game button { margin-left: 8px; border: 0; background: none; color: var(--paper); font: 800 18px 'Nunito', sans-serif; cursor: pointer; }
+#quest {
+  position: fixed; left: 12px; top: 56px; max-width: min(340px, calc(100vw - 24px)); pointer-events: none;
+  background: rgba(255, 246, 220, 0.92); color: var(--ink); padding: 6px 12px; border-radius: 12px; font-weight: 700; font-size: 13px; box-shadow: 0 4px 12px rgba(30, 20, 50, 0.25);
+}
+@media (max-width: 640px) { #game { top: auto; bottom: 12px; max-width: calc(100vw - 16px); font-size: 13px; white-space: normal; text-align: center; border-radius: 16px; } #quest { top: auto; bottom: 8px; left: 8px; max-width: calc(100vw - 16px); font-size: 12px; } }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
+#clock { cursor: pointer; pointer-events: auto; }
+#settings { left: auto; right: 12px; top: 60px; bottom: auto; width: min(340px, calc(100vw - 24px)); max-height: calc(100vh - 76px); }
+#settings .sub { font-size: 13px; opacity: 0.75; margin: -2px 24px 4px 0; }
+#settings .sec { font-weight: 800; margin: 10px 0 5px; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip {
+  border: 2px solid rgba(42, 32, 48, 0.15); background: #fff; color: var(--ink); border-radius: 999px; padding: 4px 10px;
+  font: 700 13px 'Nunito', 'Segoe UI', sans-serif; cursor: pointer; line-height: 1.2;
+}
+.chip:hover { border-color: var(--accent); }
+.chip.on { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+.slide { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.slide span { flex: 0 0 104px; font-size: 13px; }
+.slide input { flex: 1; min-width: 0; accent-color: var(--accent); }
+.slide b { flex: 0 0 42px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* phones: pinch to zoom instead of the buttons, smaller pills, panels as sheets from the bottom */
+@media (max-width: 640px) {
+  #hud { top: 8px; left: 8px; right: 8px; gap: 6px; }
+  #zoomin, #zoomout { display: none; }
+  .pill { padding: 5px 9px; font-size: 15px; }
+  button.pill { min-width: 34px; }
+  #clock { font-size: 15px; white-space: nowrap; }
+  #hud .buttons { gap: 4px; }
+  #found, #settings { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-height: 62vh; }
+  .panel { left: 8px; bottom: 8px; width: calc(100vw - 16px); }
+  #toast { top: auto; bottom: 18px; white-space: normal; text-align: center; }
+  #intro h1 { font-size: 36px; }
+  #intro p { font-size: 16px; }
+}
 
 #intro {
   position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;
@@ -78,6 +120,10 @@ button.pill:hover { background: rgba(60, 48, 80, 0.9); }
 }
 #intro .credit { margin-top: 14px; font-size: 12px; opacity: 0.6; }
 #intro .credit a { color: inherit; }
+#loadbar { height: 8px; margin: 14px auto 0; max-width: 260px; background: rgba(42, 32, 48, 0.12); border-radius: 999px; overflow: hidden; transition: opacity 0.4s; }
+#loadbar i { display: block; height: 100%; width: 5%; background: var(--accent); border-radius: 999px; transition: width 0.25s; }
+#loadbar.done { opacity: 0; }
+#enter:disabled { opacity: 0.6; cursor: progress; }
 #enter:active { transform: translateY(3px); box-shadow: 0 1px 0 #8a2a20; }
 
 #error {

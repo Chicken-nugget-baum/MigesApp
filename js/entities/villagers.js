@@ -6,7 +6,7 @@
       const home = map.buildings[c.home];
       super(home.entryPt.x, home.entryPt.z, map.walkCost, NB.rr(1.3, 1.6));
       this.c = c; this.kind = 'villager'; this.name = c.name; this.home = home;
-      this.frames = NB.Models.person(c.look || {}); this.sprite = new PIXI.Sprite(); this.shown = 0;
+      this.frames = NB.Models.person(NB.Fest.costume(c.look || {}, c.name.length * 3 + c.name.charCodeAt(0))); this.sprite = new PIXI.Sprite(); this.shown = 0;
       c._routine = (c.routine || []).slice().sort((a, b) => NB.toMin(a.at) - NB.toMin(b.at));
       c._lag = NB.rr(0, 4); // minutes
       this.inside = false; this.wait = NB.rr(0, 3); this.pause = 0; this.hop = 0;
@@ -51,7 +51,12 @@
       if (this.searching) return { place: 'search', search: true }; // looking for a dog that ran off
       if (this.fled && now < this.fled.until) return { place: this.fled.place || 'home', flee: true }; // chased away / evacuated
       if (this.guarding && now < this.guarding.until) return { place: this.c.guard, guard: true }; // the owner checks on his pond
+      const fg = NB.Fest.goal(this); if (fg) return fg; // festivals, Sunday Zopf, the snowman, the jeep
       const g = resolveGoal(this.c, NB.clock.minutes());
+      if (this.c.helps && !(g && ['niederwil', 'bushalt'].includes(g.place))) { // Louis joins his dad when he works in the garden
+        const h = E.list.find((v) => v.kind === 'villager' && v.c.id === this.c.helps);
+        if (h && h.act === 'garden' && !h.inside && !h.away && h.goalKey && h.goalKey !== 'search') return { place: h.goalKey, act: 'garden' };
+      }
       if (g) return g;
       if (!this.fav || now > this.favUntil) { this.fav = NB.pick(this.c.favorites && this.c.favorites.length ? this.c.favorites : ['dorfplatz']); this.favUntil = now + NB.rr(60, 150); }
       return { place: this.fav };
@@ -92,6 +97,7 @@
       this.evading = { v, x: tx, z: tz, t: 0 };
       this.pause = 0; this.moving = true;
       if (v.type === 'racer' && NB.UI.onScreen(this)) NB.UI.discover('racer');
+      if (v.type === 'racer') NB.Fest.news('racer');
       if (Math.random() < 0.45) say(this, v.type === 'bus' ? NB.pick(["S'Postauto!", 'Ui, de Bus!']) : v.type === 'tractor' ? NB.pick(['De Buur mit em Traktor!', 'Tuck-tuck-tuck!', 'Hoi Buur!']) : v.type === 'racer' ? NB.pick(['RASER!', 'Wäg do, de spinnt!', 'Ui ui ui!']) : NB.pick(['Achtung, es Auto!', "Hopp, uf d'Siite!", 'Ui!', 'Langsam!']), { quiet: true });
     }
     updateEvade(dt) {
@@ -156,6 +162,12 @@
           this.updateBoule(dt);
         } else if (this.act === 'garden') {
           this.updateGarden(dt);
+        } else if (this.act === 'play' && map.irisGarden) {
+          this.updatePlay(dt);
+        } else if (this.act === 'railway' && map.railway) {
+          this.updateRailway(dt);
+        } else if (this.act === 'football' && map.tanjaGarden && map.tanjaGarden.ball) {
+          this.updateFootball(dt);
         } else if (this.act === 'walk' && map.gassi) {
           this.updateWalk(dt);
         } else if (g.place === 'fire' && this.spot) { // watching the fire: stand, face it, comment
@@ -190,6 +202,7 @@
     //      (two sets, he plays both sides), count, collect, start again. Balls are drawn by NB.UI ----
     updateBoule(dt) {
       const K = map.kochProps, g = map.bouleGame || (map.bouleGame = { coch: null, balls: [], fly: null, wait: 2 });
+      if (g.duel) { this.moving = false; return; } // playing against you (js/games.js)
       g.by = this; this.moving = false; this.heading = K.throwFace;
       const talk = (lines, p) => { if (Math.random() < p) { const l = NB.pick(lines); say(this, l, { quiet: true }); if (NB.UI.onScreen(this)) NB.Audio.babble(l, this.c.voice, { pos: this, vol: 0.5 }); } };
       if (g.fly) {
@@ -238,6 +251,7 @@
       if (this.away || this.toCar || this.inside || this.worried) return;
       this.worried = d;
       if (NB.UI.onScreen(this) || NB.UI.onScreen(d)) NB.UI.discover('manolo');
+      NB.Fest.news('manolo');
       this.talk((this.c.lostLines || ['%d?! Wo isch de %d?']).map((l) => l.replace(/%d/g, d.name)));
       this.pause = 2.5; this.hop = 0.35; this.heading = Math.atan2(d.x - this.x, d.z - this.z);
       const j = this.partnerNear();
@@ -335,12 +349,74 @@
         if (lines && Math.random() < 0.45) { const l = NB.pick(lines); say(this, l, { quiet: true }); if (NB.UI.onScreen(this)) NB.Audio.babble(l, this.c.voice, { pos: this, vol: 0.5 }); }
       }
       this.gardenT -= dt; this.waterT += dt;
-      const canWater = b && NB.season !== 'winter' && !['rain', 'snow'].includes(NB.Env.weather) && NB.Env.darkness < 0.75;
+      const canWater = b && NB.season !== 'winter' && !['rain', 'storm', 'snow'].includes(NB.Env.weather) && NB.Env.darkness < 0.75;
       if (canWater && this.waterT < 4.5) {
         this.dropT = (this.dropT || 0) - dt;
         if (this.dropT <= 0) { this.dropT = 0.1; NB.UI.fx(b.x + NB.rr(-0.35, 0.35), 1.0, b.z + NB.rr(-0.35, 0.35), 'water', { vy: -1.6, life: 0.55 }); }
       }
       if (this.gardenT <= 0) { this.gardenT = null; const t = claimSpot(this, map.spots && map.spots[this.goalKey] ? this.goalKey : 'hortensien'); if (t) this.goTo(t.x, t.z); }
+    }
+    // ---- football on the lawn at Ifangweg 17 (routine entry with do: 'football'): whoever is nearest runs to the ball
+    //      and shoots at the goal or passes; when the dad plays too he stands in the goal ----
+    updateFootball(dt) {
+      const G = map.tanjaGarden, B = G.ball;
+      const players = E.list.filter((v) => v.kind === 'villager' && v.act === 'football' && v.goalKey === this.goalKey && !v.inside && !v.away && !v.path);
+      const keeper = players.length > 1 ? players.find((v) => v.c.id === 'andre2') : null;
+      const run = (x, z, sp) => { const dx = x - this.x, dz = z - this.z, d = Math.hypot(dx, dz); this.moving = d > 0.15; if (this.moving) { const k = Math.min(d, sp * dt); this.x += (dx / d) * k; this.z += (dz / d) * k; this.heading = Math.atan2(dx, dz); this.anim += dt * sp / 1.4; } return d; };
+      this.moving = false;
+      if (this === keeper) { // in the goal, moving across with the ball
+        const [, bv] = G.local(B.x, B.z), [, gv] = G.local(G.goal.x, G.goal.z), p = G.at(G.U0 + 1.9, NB.clamp(bv, gv - G.goalHalf, gv + G.goalHalf));
+        if (run(p.x, p.z, 2) < 0.15) this.heading = Math.atan2(B.x - this.x, B.z - this.z);
+        return;
+      }
+      const field = players.filter((v) => v !== keeper), chaser = field.sort((a, b) => Math.hypot(a.x - B.x, a.z - B.z) - Math.hypot(b.x - B.x, b.z - B.z))[0];
+      if (this !== chaser || B.speed() > 2.5 || B.goalT > 0) { this.heading = Math.atan2(B.x - this.x, B.z - this.z); return; }
+      if (run(B.x, B.z, 2.8) > 0.5) return;
+      // kick: at the goal (mostly), else a pass or into the open lawn
+      const L = G.lawn, mates = field.filter((v) => v !== this), [, gv] = G.local(G.goal.x, G.goal.z);
+      let t;
+      if (Math.random() < (keeper ? 0.7 : 0.55)) { t = G.at(G.U0 + 0.6, gv + NB.rr(-G.goalHalf - 0.7, G.goalHalf + 0.7)); B.shot = this; }
+      else if (mates.length && Math.random() < 0.6) { const m = NB.pick(mates); t = { x: m.x, z: m.z }; B.shot = null; }
+      else { const sp = NB.pick(map.spots.fuessball); t = { x: sp.x, z: sp.z }; B.shot = null; } // into the open lawn
+      const dx = t.x - B.x, dz = t.z - B.z, d = Math.hypot(dx, dz) || 1, v = NB.clamp(d * 1.1, 4, 9);
+      B.vx = (dx / d) * v; B.vz = (dz / d) * v; B.vy = Math.random() < 0.3 ? 3 : 0.8;
+      if (NB.UI.onScreen(this)) NB.Audio.play('pop', { pos: this, rate: 0.55, vol: 0.6 });
+      if (this.c.footballLines && Math.random() < 0.2 && B.shot !== this) { const l = NB.pick(this.c.footballLines.slice(1)); say(this, l, { quiet: true }); }
+    }
+    // ---- tag on Iris's lawn (Iris and Nuria): round and round, one chasing the other; who's "it" swaps now and then ----
+    updatePlay(dt) {
+      const G = map.irisGarden, P = (map.playTag = map.playTag || { a: 0, dir: 1, swapT: 8, chaser: 'iris' });
+      const mates = E.list.filter((v) => v.kind === 'villager' && v.act === 'play' && v.goalKey === this.goalKey && !v.inside && !v.path);
+      this.moving = false;
+      if (mates.length < 2) { if (this.spot) this.heading = this.spot.face; return; } // waiting for the other one
+      if (this === mates[0]) { // one of them moves the game on
+        P.a += dt * 1.5 * P.dir;
+        if ((P.swapT -= dt) <= 0) {
+          P.swapT = NB.rr(6, 11); P.dir = -P.dir; P.chaser = P.chaser === 'iris' ? 'nuria' : 'iris';
+          const it = mates.find((v) => v.c.id === P.chaser); if (it && it.c.tagLines) say(it, NB.pick(it.c.tagLines), { quiet: true });
+        }
+      }
+      const behind = this.c.id === P.chaser ? -0.9 * P.dir : 0, a = P.a + behind, r = 2.2;
+      const x = G.play.x + Math.cos(a) * r, z = G.play.z + Math.sin(a) * r * 0.8, dx = x - this.x, dz = z - this.z;
+      if (Math.hypot(dx, dz) > 0.01) { this.heading = Math.atan2(dx, dz); this.moving = true; this.anim += dt * 1.6; }
+      this.x = x; this.z = z;
+      if (Math.random() < dt * 0.15) this.hop = 0.4;
+    }
+    // ---- the garden railway at Ifangweg 18 (routine entry with do: 'railway'): Ernst at the controls, the trains run
+    //      while he's there; now and then he walks over to the other bed ----
+    updateRailway(dt) {
+      const R = map.railway;
+      this.moving = false; if (this.spot) this.heading = this.spot.face;
+      R.onAt = performance.now();
+      this.railT = (this.railT == null ? NB.rr(50, 110) : this.railT) - dt;
+      this.lineT = (this.lineT == null ? NB.rr(8, 20) : this.lineT) - dt;
+      if (this.lineT <= 0) {
+        this.lineT = NB.rr(25, 50);
+        const watcher = E.list.find((v) => v.kind === 'villager' && v !== this && !v.inside && v.goalKey === 'gartebahn' && Math.hypot(v.x - this.x, v.z - this.z) < 12);
+        const l = watcher && Math.random() < 0.5 ? NB.pick(['Wotsch emol Fahrdienschtleiter sii, ' + watcher.name + '?', 'Lueg, ' + watcher.name + ': jetzt chunnt de Schnällzug!', watcher.name + ', nöd uf d\'Gleis stah!']) : NB.pick(this.c.railLines || ['Tschu-tschu!']);
+        say(this, l, { quiet: true }); if (NB.UI.onScreen(this)) NB.Audio.babble(l, this.c.voice, { pos: this, vol: 0.5 });
+      }
+      if (this.railT <= 0) { this.railT = null; const t = claimSpot(this, 'iisebahn'); if (t) this.goTo(t.x, t.z); }
     }
     // ---- fishing at the Löli-Weiher (routine entry with do: 'fish') ----
     startFishing() {
@@ -380,6 +456,7 @@
     }
     caught(by) {
       if (NB.UI.onScreen(this)) NB.UI.discover('poacher');
+      NB.Fest.news('poacher');
       if (this.fled) return;
       const now = performance.now() / 1000;
       this.fishing = null; this.fled = { until: now + NB.rr(110, 180) }; this.goalKey = null; this.path = null;
@@ -391,6 +468,7 @@
       const other = E.list.find((o) => o !== this && o.kind === 'villager' && !o.inside && !o.away && Math.hypot(o.x - this.x, o.z - this.z) < 5);
       const night = this.c.sleep && NB.inWindow(NB.clock.minutes(), this.c.sleep[0], this.c.sleep[1]);
       let line = other && Math.random() < 0.6 ? NB.pick(['Sali ', 'Hoi ', 'Grüezi ', 'Tschau ']) + other.name + '!' : NB.pick((night && this.c.night) || this.c.random || ['Schöne Tag hüt!']);
+      if (this.c.gossip && Math.random() < 0.5 && NB.Fest.gossip()) line = NB.Fest.gossip(); // Karin passes on what happened
       if (this.c.phoneLines && !other && Math.random() < 0.4) { line = '📱 ' + NB.pick(this.c.phoneLines); this.pause = 6; this.hop = 0; this.heading = I.towardCamera; } // a call home
       if (!line) return;
       say(this, line, { quiet: true });
@@ -407,9 +485,16 @@
       let line = this.c.cycle ? lines[this.cycleIdx] : lines[Math.min(this.clicks, lines.length - 1)];
       if (this.c.shuffle && !night) { // a random line, plus the ones that fit today's weather
         const wl = this.c.weatherLines || {}, w = NB.Env.weather, cold = NB.season === 'winter' || w === 'snow';
-        const pool = lines.concat(w === 'clear' && NB.Env.darkness < 0.5 && !cold ? wl.sun || [] : [], ['cloudy', 'rain', 'fog'].includes(w) ? wl.rain || [] : [], cold || (NB.season === 'autumn' && w !== 'clear') ? wl.cold || [] : []).filter((l) => l !== this.lastLine);
+        const pool = lines.concat(w === 'clear' && NB.Env.darkness < 0.5 && !cold ? wl.sun || [] : [], ['cloudy', 'rain', 'storm', 'fog'].includes(w) ? wl.rain || [] : [], cold || (NB.season === 'autumn' && w !== 'clear') ? wl.cold || [] : []).filter((l) => l !== this.lastLine);
         line = NB.pick(pool);
       }
+      // memory: how often you've clicked them today; the Gehrigs are grumpy for a few days after their dairy burned
+      const day = NB.clock.year + '-' + NB.clock.month + '-' + NB.clock.date, mem = NB.UI.store.get('clicks', {});
+      if (mem.day !== day) { mem.day = day; mem.n = {}; }
+      const n = (mem.n[this.c.id] || 0) + 1; mem.n[this.c.id] = n; NB.UI.store.set('clicks', mem);
+      const fireAt = NB.UI.store.get('fireAt', 0);
+      if ([5, 10, 20, 50, 100].includes(n)) line = NB.pick(n >= 20 ? [`${n} Mol hüt! Hesch nüt Bessers z'tue? 😄`, `Du hesch mi hüt scho ${n} Mol aagchlickt. Rekord!`] : [`Du hesch mi hüt scho ${n} Mol aagchlickt!`, `Scho wieder du? Das isch s'${n}. Mol hüt!`]);
+      else if (this.c.afterFire && fireAt && Date.now() - fireAt < 3 * 86400000 && Math.random() < 0.5) line = NB.pick(this.c.afterFire);
       this.lastLine = line;
       say(this, line);
       for (const d of this.dogs || []) if (d.a.chimeIn) d.woofT = 1.1;
@@ -421,5 +506,78 @@
     hopY() { return this.hop > 0 ? Math.sin((this.hop / 0.35) * Math.PI) * 0.4 : 0; }
     top() { return { x: this.x, y: 2.4 + this.hopY(), z: this.z }; }
   }
-  Object.assign(NB.Ent, { Villager });
+  // the football on the lawn at Ifangweg 17: rolls, bounces, stays on the lawn; a goal when it crosses the goal line
+  // between the posts (the keeper saves some); drawn by NB.UI
+  class Ball {
+    constructor() { const G = map.tanjaGarden, L = G.lawn, p = G.at((L.u0 + L.u1) / 2, (L.v0 + L.v1) / 2); Object.assign(this, { kind: 'ball', name: 'Ball', x: p.x, z: p.z, y: 0, vx: 0, vz: 0, vy: 0, goalT: 0, shot: null }); G.ball = this; }
+    speed() { return Math.hypot(this.vx, this.vz); }
+    update(dt) {
+      const G = map.tanjaGarden, L = G.lawn;
+      if (this.goalT > 0 && (this.goalT -= dt) <= 0) { const p = G.at((L.u0 + L.u1) / 2 + 2, (L.v0 + L.v1) / 2); this.x = p.x; this.z = p.z; this.vx = this.vz = this.vy = 0; }
+      if (this.goalT > 0 && this.goalT < 1.5) return;
+      this.x += this.vx * dt; this.z += this.vz * dt; this.y += this.vy * dt; this.vy -= 12 * dt;
+      if (this.y < 0) { this.y = 0; this.vy = Math.abs(this.vy) > 1.5 ? -this.vy * 0.45 : 0; }
+      const f = Math.max(0, 1 - (this.y > 0 ? 0.2 : 1.4) * dt); this.vx *= f; this.vz *= f;
+      let [u, v] = G.local(this.x, this.z);
+      const [, gv] = G.local(G.goal.x, G.goal.z), inMouth = Math.abs(v - gv) < G.goalHalf;
+      if (u < G.U0 + 1.3 && inMouth && this.goalT <= 0 && this.speed() > 1) { // over the line
+        const keeper = E.list.find((e) => e.kind === 'villager' && e.c.id === 'andre2' && e.act === 'football' && !e.inside && Math.hypot(e.x - this.x, e.z - this.z) < 1.6);
+        if (keeper && Math.random() < 0.45) { // saved
+          this.vx = -this.vx * 0.6; this.vz = -this.vz * 0.6; u = G.U0 + 1.4;
+          say(keeper, NB.pick(['Ghalte! 🧤', 'Nöd mit mir!', 'Parade!']), { quiet: true });
+        } else {
+          this.goalT = 2.5; this.vx *= 0.2; this.vz *= 0.2;
+          const who = this.shot || E.list.find((e) => e.kind === 'villager' && e.act === 'football' && !e.inside);
+          if (who) { say(who, (who.c.footballLines || ['Goal!'])[0], { quiet: false }); who.hop = 0.6; if (who.c.parents) NB.Fest.cheer(who); }
+          if (NB.UI.onScreen(this)) { NB.Audio.play('cheer', { pos: this, vol: 0.35 }); NB.UI.discover('goal'); for (let k = 0; k < 6; k++) NB.UI.fx(this.x, 1, this.z, 'confetti', { vy: 1.5, vx: NB.rr(-1, 1), g: 2, life: 1.2, col: NB.pick(['#d52b1e', '#ffffff']) }); }
+          return;
+        }
+      }
+      // bounce off the edges of the lawn (and the hedge behind the goal)
+      if (u < L.u0 - 0.5 || u > L.u1 + 1 || v < L.v0 - 0.5 || v > L.v1 + 0.5) {
+        const cu = NB.clamp(u, L.u0 - 0.5, L.u1 + 1), cv = NB.clamp(v, L.v0 - 0.5, L.v1 + 0.5), p = G.at(cu, cv);
+        const nu = u !== cu, nv = v !== cv, c = G.at(1, 0), o = G.at(0, 0), ux = c.x - o.x, uz = c.z - o.z; // the u axis in world
+        let lu = this.vx * ux + this.vz * uz, lv = this.vx * uz * -1 + this.vz * ux; // velocity in (u, v)
+        if (nu) lu = -lu * 0.5; if (nv) lv = -lv * 0.5;
+        const vxy = [lu * ux - lv * uz, lu * uz + lv * ux]; this.vx = vxy[0]; this.vz = vxy[1];
+        this.x = p.x; this.z = p.z;
+      }
+    }
+    get visible() { return false; }
+  }
+
+  // a train on one of the garden railway loops: the loco and its cars are each pickable entities, placed along the
+  // loop; it runs while Ernst plays (map.railway.onAt) or for a while after a click on it
+  class Train {
+    constructor(loop, kinds, speed, name) {
+      this.kind = 'trainctl'; this.loop = loop; this.speed = speed; this.v = 0; this.d = Math.random() * loop.len; this.clackT = 0; this.whistleT = NB.rr(8, 20);
+      this.cars = kinds.map((k, i) => ({ kind: 'train', name, car: k, i, train: this, sprite: new PIXI.Sprite(), heading: 0, x: 0, z: 0, update() {}, get visible() { return true; },
+        top() { return { x: this.x, y: 0.6, z: this.z }; }, click() { this.train.click(this); } }));
+      this.place();
+    }
+    at(d) { // point + heading at distance d along the loop
+      const L = this.loop, n = L.pts.length; d = ((d % L.len) + L.len) % L.len;
+      let i = 1; while (i < L.cum.length - 1 && L.cum[i] < d) i++;
+      const p = L.pts[i - 1], q = L.pts[i % n], t = (d - L.cum[i - 1]) / ((L.cum[i] - L.cum[i - 1]) || 1);
+      return { x: p.x + (q.x - p.x) * t, z: p.z + (q.z - p.z) * t, h: Math.atan2(q.x - p.x, q.z - p.z) };
+    }
+    place() { for (const c of this.cars) { const a = this.at(this.d - c.i * 0.64); c.x = a.x; c.z = a.z; c.heading = a.h; place(c, NB.Models.miniCar(c.car, a.h), a.x, 0, a.z, 2); } }
+    click(car) {
+      const R = map.railway; R.clickUntil = performance.now() + 25000;
+      say(car, NB.pick(['Tschu-tschu! 🚂', 'Alles iistiege!', 'Nöchschte Halt: Nesselnbach-Ifang.', 'Pünktlich wie d\'SBB.']), { life: 2.5 });
+      NB.Audio.play('whistle', { pos: car, rate: 1.4, vol: 0.5 }); NB.UI.discover('iisebahn');
+    }
+    update(dt) {
+      const R = map.railway, now = performance.now(), on = now - (R.onAt || -1e9) < 1500 || now < (R.clickUntil || 0);
+      this.v += NB.clamp((on ? this.speed : 0) - this.v, -0.5 * dt, 0.4 * dt);
+      if (this.v < 0.005) return;
+      this.d += this.v * dt; this.place();
+      const loco = this.cars[0];
+      if (!NB.UI.onScreen(loco, 40) || NB.view.zoom < 2) return;
+      if ((this.clackT -= dt * (this.v / this.speed)) <= 0) { this.clackT = 0.45; NB.Audio.play('click', { pos: loco, rate: 0.55, vol: 0.18 }); setTimeout(() => NB.Audio.play('click', { pos: loco, rate: 0.5, vol: 0.14 }), 110); }
+      if ((this.whistleT -= dt) <= 0) { this.whistleT = NB.rr(14, 30); NB.Audio.play('whistle', { pos: loco, rate: 1.4, vol: 0.35 }); if (on && now - (R.onAt || -1e9) < 1500) NB.UI.discover('iisebahn'); }
+    }
+  }
+
+  Object.assign(NB.Ent, { Ball, Train, Villager });
 })(window.NB);

@@ -1,7 +1,8 @@
 // Builds the 3D scene data (js/data/scene.js) for Nesselnbach:
-//  - streets (centre lines) from OpenStreetMap (osm/raw.json): Niederwilerstrasse, Ifangweg, Kapellenweg
+//  - streets (centre lines) from OpenStreetMap (osm/raw.json): Niederwilerstrasse (becoming the Nesselnbacherstrasse),
+//    Ifangweg, Kapellenweg, Schänisweg, Fendler
 //  - buildings from the official cadastral survey + building register (osm/av.json, see scripts/av.mjs):
-//    only buildings whose address is on one of the three streets; real outlines, floors, roof colours
+//    only buildings whose address is on one of these streets; real outlines, floors, roof colours
 //  - driveways, sidewalks and pools near those streets (cadastral survey)
 // Units: metres. x = east, z = south. Run: npm run scene
 // Data: © OpenStreetMap contributors (ODbL); Amtliche Vermessung Kanton Aargau; GWR (BFS); SWISSIMAGE (swisstopo).
@@ -22,7 +23,14 @@ function fromLv95([E, Nn]) {
   return fromWgs((p * 100) / 36, (l * 100) / 36).map((v) => +v.toFixed(2));
 }
 const ways = raw.elements.filter((e) => e.type === 'way' && e.geometry);
-const STREET_NAMES = ['Niederwilerstrasse', 'Ifangweg', 'Kapellenweg'];
+const STREET_NAMES = ['Niederwilerstrasse', 'Ifangweg', 'Kapellenweg', 'Schänisweg', 'Fendler', 'Nesselnbacherstrasse'];
+const SERVICE_ROADS = ['Fendler']; // named service roads that are drawn as streets
+// building ids stay the same between runs (characters live in them): reuse the id of each EGID from the last scene
+const OLD_IDS = new Map();
+try {
+  const t = readFileSync('js/data/scene.js', 'utf8'), old = JSON.parse(t.slice(t.indexOf('NB.Scene = ') + 11, t.lastIndexOf(';')));
+  for (const b of old.buildings) if (b.egid) OLD_IDS.set(b.egid, b.id);
+} catch (e) { /* first run */ }
 
 // ---------------- geometry helpers ----------------
 const distSeg = ([px, pz], [ax, az], [bx, bz]) => {
@@ -102,11 +110,12 @@ function rectParts(pts, o) {
 
 // ---------------- streets (OSM centre lines) ----------------
 const streets = ways
-  .filter((w) => w.tags.highway === 'residential' && STREET_NAMES.includes(w.tags.name))
+  .filter((w) => (w.tags.highway === 'residential' || (w.tags.highway === 'service' && SERVICE_ROADS.includes(w.tags.name))) && STREET_NAMES.includes(w.tags.name))
   .map((w) => ({ name: w.tags.name, width: 5, pts: w.geometry.map(toL) }))
   .filter((s) => s.pts.every(([, z]) => z > -300)); // drop the far-away Niederwilerstrasse near Tägerig
-const SOUTH_LIMIT = 260;
+const SOUTH_LIMIT = 1000; // the map reaches south to where the Schänisweg meets the Nesselnbacherstrasse (the walking loop)
 for (const s of streets) s.pts = s.pts.filter(([, z]) => z < SOUTH_LIMIT);
+for (let i = streets.length - 1; i >= 0; i--) if (streets[i].pts.length < 2) streets.splice(i, 1); // pieces entirely in the south
 function nearestStreet(p) {
   let best = { d: Infinity };
   for (const s of streets) for (let i = 1; i < s.pts.length; i++) {
@@ -215,8 +224,10 @@ if (farm) {
   }
 }
 // homes for the family / villagers: the 12 houses closest to the centre
-blds.filter((b) => !b.id && b.kind === 'house').sort((a, b) => a.dist - b.dist).slice(0, 12).forEach((b, i) => { b.id = 'haus' + (i + 1); });
-let n = 0;
+const taken = new Set(blds.map((b) => b.id).filter(Boolean));
+for (const b of blds) if (!b.id && OLD_IDS.has(b.egid) && !taken.has(OLD_IDS.get(b.egid))) { b.id = OLD_IDS.get(b.egid); taken.add(b.id); }
+if (!OLD_IDS.size) blds.filter((b) => !b.id && b.kind === 'house').sort((a, b) => a.dist - b.dist).slice(0, 12).forEach((b, i) => { b.id = 'haus' + (i + 1); });
+let n = Math.max(0, ...[...taken].map((id) => (/^[hg](\d+)$/.exec(id) || [0, 0])[1] * 1));
 blds.forEach((b) => { if (!b.id) b.id = (b.kind === 'house' ? 'h' : 'g') + ++n; delete b.dist; });
 
 // driveways, sidewalks, pools close to the three streets / chosen buildings
@@ -231,8 +242,8 @@ const stops = [
   { name: 'Nesselnbach, Unterdorf', at: nodeL(/^Nesselnbach Unterdorf$/) },
   { name: 'Nesselnbach, Mitteldorf', at: nodeL(/^Nesselnbach Mitteldorf$/) },
 ].filter((s) => s.at);
-// the bus / car route: Niederwilerstrasse from the Landstrasse junction to the south edge
-const nw = streets.filter((s) => s.name === 'Niederwilerstrasse');
+// the bus / car route: Niederwilerstrasse from the Landstrasse junction, south it becomes the Nesselnbacherstrasse
+const nw = streets.filter((s) => s.name === 'Niederwilerstrasse' || s.name === 'Nesselnbacherstrasse');
 const route = [];
 let cur = nw.find((s) => s.pts[0][0] > 200) || nw[0];
 const used = new Set();
@@ -242,7 +253,7 @@ while (cur && !used.has(cur)) {
   const end = route[route.length - 1];
   cur = nw.find((s) => !used.has(s) && Math.hypot(s.pts[0][0] - end[0], s.pts[0][1] - end[1]) < 1);
 }
-const allPts = streets.flatMap((s) => s.pts);
+const allPts = streets.filter((s) => !SERVICE_ROADS.includes(s.name)).flatMap((s) => s.pts).filter(([, z]) => z < 910); // service roads and the road on south of the Schänisweg junction don't grow the map
 const bounds = [
   Math.min(...allPts.map((p) => p[0])) - 50, Math.min(...allPts.map((p) => p[1])) - 50,
   Math.max(...allPts.map((p) => p[0])) + 50, Math.max(...allPts.map((p) => p[1])) + 50,
@@ -263,10 +274,24 @@ for (const w of water) {
 }
 // ---------------- gravel track to the Löli-Weiher (OSM highway=track "Kapellenweg", grade1) ----------------
 // Added after the bounds are final; kept off the pond shore (>= 5 m from the water) and clipped to the map.
-const TRACK_IDS = [102806510];
+// the part of a polyline inside the map (6 m in), cut exactly at the edge
+function clipToMap(pts) {
+  const lo = [bounds[0] + 6, bounds[1] + 6], hi = [bounds[2] - 6, bounds[3] - 6], ins = (p) => p[0] > lo[0] && p[0] < hi[0] && p[1] > lo[1] && p[1] < hi[1];
+  const edge = (a, b) => { let t = 1; for (let k = 0; k < 2; k++) { const d = b[k] - a[k]; if (b[k] < lo[k]) t = Math.min(t, (lo[k] - a[k]) / d); if (b[k] > hi[k]) t = Math.min(t, (hi[k] - a[k]) / d); } return [+(a[0] + (b[0] - a[0]) * t).toFixed(2), +(a[1] + (b[1] - a[1]) * t).toFixed(2)]; };
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    if (ins(pts[i])) { if (i && !ins(pts[i - 1]) && !out.length) out.push(edge(pts[i], pts[i - 1])); out.push(pts[i]); }
+    else if (out.length && ins(pts[i - 1])) { out.push(edge(pts[i - 1], pts[i])); break; }
+  }
+  return out;
+}
+// Unnamed in OSM but part of a named road: the Schänisweg goes on south as a gravel track (towards the
+// Nesselnbacherstrasse), the Fendler runs from the Bremgarterstrasse down to the Niederwilerstrasse.
+const TRACK_IDS = [102806510, 102806534, 97960510];
+const TRACK_NAMES = { 102806534: 'Schänisweg', 97960510: 'Fendler' };
 const tracks = ways
   .filter((w) => TRACK_IDS.includes(w.id))
-  .map((w) => ({ name: w.tags.name || 'Feldweg', kind: 'track', width: 3, pts: w.geometry.map(toL).filter(([, z]) => z > bounds[1] + 6) }));
+  .map((w) => ({ name: TRACK_NAMES[w.id] || w.tags.name || 'Feldweg', kind: 'track', width: 3, pts: w.geometry.map(toL), clip: true }));
 for (const t of tracks) for (const p of t.pts) for (const w of water) {
   const c = centroid(w.pts);
   for (let guard = 0; guard < 40; guard++) {
@@ -278,7 +303,24 @@ for (const t of tracks) for (const p of t.pts) for (const w of water) {
     p[0] = +(p[0] + (p[0] - c[0]) / l).toFixed(1); p[1] = +(p[1] + (p[1] - c[1]) / l).toFixed(1);
   }
 }
-streets.push(...tracks.filter((t) => t.pts.length >= 2));
+streets.push(...tracks); // cut at the map edge once the bounds are final (below)
+// the viewpoint over Nesselnbach (a wayside cross and a bench): in the first curve of the Schänisweg track, on the
+// inside of the curve, looking back at the village
+let viewpoint = null;
+{
+  const ms = stops.find((q) => /Mitteldorf/.test(q.name)), t = tracks.find((q) => q.name === 'Schänisweg'), V = (ms && ms.at) || [0, 0];
+  const turnAt = (i) => { const [a, b, c] = [t.pts[i - 1], t.pts[i], t.pts[i + 1]]; const d = Math.atan2(c[0] - b[0], c[1] - b[1]) - Math.atan2(b[0] - a[0], b[1] - a[1]); return Math.atan2(Math.sin(d), Math.cos(d)); };
+  // the first stretch of 60 m that turns by 15 degrees or more (the track bends gently)
+  if (t) for (let s0 = 1; s0 < t.pts.length - 1 && !viewpoint; s0++) {
+    let sum = 0, k = s0;
+    while (k < t.pts.length - 1 && Math.hypot(t.pts[k][0] - t.pts[s0][0], t.pts[k][1] - t.pts[s0][1]) < 60) sum += turnAt(k++);
+    if (Math.abs(sum) < 0.26) continue;
+    const i = (s0 + k) >> 1, [a, b, c] = [t.pts[i - 1], t.pts[i], t.pts[i + 1]];
+    const l = Math.hypot(c[0] - a[0], c[1] - a[1]) || 1; let n = [-(c[1] - a[1]) / l, (c[0] - a[0]) / l];
+    if (n[0] * (V[0] - b[0]) + n[1] * (V[1] - b[1]) < 0) n = [-n[0], -n[1]]; // the side towards the village
+    viewpoint = { x: +(b[0] + n[0] * 3.8).toFixed(2), z: +(b[1] + n[1] * 3.8).toFixed(2), face: +Math.atan2(V[0] - b[0], V[1] - b[1]).toFixed(3), road: [b[0], b[1]] };
+  }
+}
 
 // ---------------- Milchzentrale (village dairy: milk collection + cheese) ----------------
 // Kapellenweg 1: the Gehrigs' Milchzentrale (milk collection + cheese dairy, flats above).
@@ -336,6 +378,31 @@ let racer = null, fuel = null, kreisel = null;
 const iris = blds.find((b) => b.egid === '559217');
 if (iris) Object.assign(iris, { roof: 'hipped', roofColor: '#8f6e5a', wallColor: '#ece8df', garden: true });
 
+// ---------------- Ifangweg 17 (Tanja, André, Louis, Nuria): new build 2021, flat roofs, light render, the garage wing
+// one storey; a big lawn on the west side (from the aerial photo) ----------------
+const tanja = blds.find((b) => b.egid === '263106294');
+if (tanja) {
+  Object.assign(tanja, { roof: 'flat', roofColor: '#b9b6ad', wallColor: '#eeece6', modern: true, lawn: true });
+  const wing = tanja.parts.slice().sort((a, b) => a.w * a.d - b.w * b.d)[0];
+  if (tanja.parts.length > 1) wing.levels = 1;
+}
+
+// ---------------- Ifangweg 18 + 16: one double house under a dark brown roof (aerial photo) ----------------
+// each half a plain rectangle of the same depth and angle, the ridge running across both halves (parallel to the street)
+{
+  const pair = ['Ifangweg 18', 'Ifangweg 16'].map((nr) => blds.find((q) => q.addr === nr)).filter(Boolean);
+  if (pair.length === 2) {
+    const ang = (pair[0].angle + pair[1].angle) / 2, ca = Math.cos(ang), sa = Math.sin(ang);
+    const mid = [(pair[0].cx + pair[1].cx) / 2, (pair[0].cz + pair[1].cz) / 2], gap = Math.abs((pair[1].cx - pair[0].cx) * -sa + (pair[1].cz - pair[0].cz) * ca);
+    pair.forEach((b, i) => {
+      const side = ((b.cx - mid[0]) * -sa + (b.cz - mid[1]) * ca) > 0 ? 1 : -1, back = -1.0; // u: depth (towards the street), v: along the street
+      // both halves share the centre of the whole house (so they snap to the iso grid together); each draws its own half
+      Object.assign(b, { angle: +ang.toFixed(4), cx: +(mid[0] + ca * back).toFixed(2), cz: +(mid[1] + sa * back).toFixed(2), w: 12.4, d: +(gap * 2).toFixed(2),
+        parts: [{ u: 0, v: +(side * gap / 2).toFixed(2), w: 12.4, d: +gap.toFixed(2) }], levels: 2, roofColor: '#6e5a4c', wallColor: '#ece5d8', ridge: 'short', pair: true });
+    });
+  }
+}
+
 // ---------------- fields (OSM landuse: farmland / meadow / orchard around the village) ----------------
 // Kept when they overlap the painted ground (bounds + margin). Crop kinds rotate per field (grain, meadow, root
 // crops) so the landscape has variety; `angle` is the long axis of the field (furrow / tractor direction).
@@ -362,6 +429,21 @@ const fieldRect = (f) => {
 const inMap = fields.filter((f) => overlaps(f.pts, -30) && fieldRect(f));
 const feld = inMap.find((f) => f.kind !== 'meadow') || inMap[0], weide = inMap.find((f) => f.kind === 'meadow') || feld;
 const around = (p, r) => [p[0] - r, p[1] - r, p[0] + r, p[1] + r].map((v) => +v.toFixed(1));
+// the little lane off the Ifangweg between Ifangweg 15 (Iris) and 17 (Tanja) to the door of Ifangweg 19 (aerial photo:
+// right along the garage wing of no. 17)
+{
+  const n19 = blds.find((b) => b.addr === 'Ifangweg 19'), n17 = blds.find((b) => b.addr === 'Ifangweg 17'), n15 = blds.find((b) => b.addr === 'Ifangweg 15');
+  if (n19 && n17 && n15) {
+    const xs17 = n17.outline.map((p) => p[0]), xs15 = n15.outline.map((p) => p[0]), x = (Math.max(...xs17) + Math.min(...xs15)) / 2 - 1.5; // closer to no. 17
+    const ifang = streets.filter((q) => q.name === 'Ifangweg');
+    let j = null; for (const q of ifang) for (let i = 1; i < q.pts.length; i++) { const [d, pt] = distSeg([x, n17.cz - 15], q.pts[i - 1], q.pts[i]); if (!j || d < j.d) j = { d, pt }; }
+    const e = n19.entry, zs = Math.max(...n17.outline.map((p) => p[1]));
+    const pts = [[x, j.pt[1]], [x + 0.3, n17.cz], [x, zs + 1], [x - 3.5, e[1] - 2.2], [e[0] + 1.5, e[1] - 0.4], [e[0], e[1]]];
+    streets.push({ name: 'Ifangweg', kind: 'lane', width: 3, to: 'Ifangweg 19', pts: pts.map(([a, b]) => [+a.toFixed(2), +b.toFixed(2)]) }); // the end follows the drawn door (js/world.js)
+  }
+}
+const outside = (pts) => pts.some(([x, z]) => x < bounds[0] + 6 || x > bounds[2] - 6 || z < bounds[1] + 6 || z > bounds[3] - 6);
+for (let i = streets.length - 1; i >= 0; i--) { const t = streets[i]; if (!t.clip && !(t.kind !== 'main' && outside(t.pts))) continue; delete t.clip; t.pts = clipToMap(t.pts); if (t.pts.length < 2) streets.splice(i, 1); } // roads end at the map edge
 const midOf = (name) => { const s = streets.filter((x) => x.name === name).sort((a, b) => b.pts.length - a.pts.length)[0]; return s.pts[Math.floor(s.pts.length / 2)]; };
 const mittel = stops.find((s) => /Mitteldorf/.test(s.name));
 const pois = {
@@ -395,7 +477,7 @@ if (racer) labels.push({ text: 'Bremgarterstrasse', at: racer[Math.floor(racer.l
 
 const scene = {
   source: 'OpenStreetMap contributors (ODbL); Amtliche Vermessung Kanton Aargau; GWR (BFS); SWISSIMAGE (swisstopo)',
-  origin: ORIGIN, bounds, streets, buildings: blds, surfaces, fields, water, stops, route, racer, fuel, kreisel, pois, labels, start: mittel ? mittel.at : [0, 0],
+  origin: ORIGIN, bounds, streets, buildings: blds, surfaces, fields, water, stops, route, racer, fuel, kreisel, pois, labels, viewpoint, start: mittel ? mittel.at : [0, 0],
 };
 writeFileSync('js/data/scene.js', '// Generated by scripts/build-scene.mjs (OpenStreetMap, Amtliche Vermessung AG, GWR, SWISSIMAGE). Do not edit by hand.\n' +
   'window.NB = window.NB || {};\nNB.Scene = ' + JSON.stringify(scene) + ';\n');

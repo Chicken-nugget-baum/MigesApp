@@ -28,3 +28,5 @@ synthesized on purpose.
 | `fire.mp3` | Milchzentrale fire (loop) | 3322 Fire, Foley |
 | `bark1-2.mp3` | dogs | 2955 Barking dog #3, 2352 Old dog barking #1 |
 | `racer.mp3` | the evening racer on the Bremgarterstrasse | 0600 Acceleration Aston Martin |
+
+The long loops (crickets, fire, purr, tractor, racer) were re-encoded to 40 kbit/s mono 32 kHz and the bell to 56 kbit/s to load faster; they are fetched only when first needed.

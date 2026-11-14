@@ -28,7 +28,7 @@
     const small = b.kind === 'garage', chapel = b.kind === 'chapel', barnKind = b.kind === 'barn', dairy = b.kind === 'dairy';
     const homey = b.kind === 'house' || b.kind === 'farmhouse';
     const floorH = 2.8;
-    const H = small ? 2.6 : barnKind ? 4.8 : chapel ? 5.5 : dairy ? Math.max(4.8, b.levels * floorH + 0.9) : b.levels * floorH + 0.4;
+    const H0 = small ? 2.6 : barnKind ? 4.8 : chapel ? 5.5 : dairy ? Math.max(4.8, b.levels * floorH + 0.9) : b.levels * floorH + 0.4, H = H0;
     const wall = b.wallColor || (chapel ? '#fbf8f2' : small ? '#d9d2c6' : barnKind ? '#c99a6b' : dairy ? '#f6f3ec' : WALLS[i % WALLS.length]);
     const WOOD = '#b07a4a', PLANK = '#8f5f36';
     const roofCol = P.snow ? (i % 3 ? '#f4f7fb' : '#e9eef5') : b.roofColor || (chapel ? '#6f7486' : ROOFS[(i * 3) % ROOFS.length]);
@@ -40,6 +40,11 @@
     const onFace = (axis, f, p, off, across, y, dep, len, h, col, o) =>
       axis === 'u' ? m.box(f + off, p + across - len / 2, y, dep, len, h, col, o) : m.box(p + across - len / 2, f + off, y, len, dep, h, col, o);
     const addWindow = (axis, f, p, yc, ground) => {
+      if (b.modern) { // new build: wide windows in dark frames, no shutters, no flower boxes
+        onFace(axis, f, p, 0, 0, yc - 0.85, 0.08, 1.7, 1.7, '#45484e');
+        onFace(axis, f, p, 0.02, 0, yc - 0.72, 0.1, 1.45, 1.45, '#6f9ec4', { light: WINDOW_LIGHT, noOutline: true });
+        return;
+      }
       onFace(axis, f, p, 0, 0, yc - 0.675, 0.08, 1.15, 1.35, '#ffffff');
       onFace(axis, f, p, 0.02, 0, yc - 0.55, 0.1, 0.9, 1.1, '#6aa4d8', { light: WINDOW_LIGHT, noOutline: true });
       if (shutter && homey) { onFace(axis, f, p, 0, -0.8, yc - 0.675, 0.08, 0.35, 1.35, shutter); onFace(axis, f, p, 0, 0.8, yc - 0.675, 0.08, 0.35, 1.35, shutter); }
@@ -54,7 +59,8 @@
     for (const p of parts) {
       const barn = p.type === 'barn';
       const u0 = p.u - p.w / 2, v0 = p.v - p.d / 2;
-      const rh = chapel ? Math.min(p.w, p.d) * 0.7 : small ? Math.min(1.2, Math.min(p.w, p.d) * 0.3) : Math.min(5, Math.min(p.w, p.d) * 0.42);
+      const flat = b.roof === 'flat', H = p.levels ? p.levels * floorH + 0.4 : H0; // a block can be lower (garage wing)
+      const rh = flat ? 0.4 : chapel ? Math.min(p.w, p.d) * 0.7 : small ? Math.min(1.2, Math.min(p.w, p.d) * 0.3) : Math.min(5, Math.min(p.w, p.d) * 0.42);
       m.shadow(u0, v0, p.w, p.d, H + rh * 0.5);
       m.box(u0, v0, 0, p.w, p.d, H, barn ? WOOD : wall);
       if (barn) { // vertical planks on the visible faces
@@ -67,13 +73,16 @@
       }
       if (!b.oneRoof) {
         const over = small ? 0.25 : 0.6;
-        if (b.roof === 'hipped') m.hip(u0 - over, v0 - over, H, p.w + over * 2, p.d + over * 2, rh * 0.85, roofCol);
-        else m.gable(u0 - over, v0 - over, H, p.w + over * 2, p.d + over * 2, rh, p.w >= p.d ? 'u' : 'v', roofCol);
+        if (flat) { // flat roof: a thin overhanging slab with a parapet and gravel inside
+          m.box(u0 - 0.15, v0 - 0.15, H, p.w + 0.3, p.d + 0.3, 0.38, '#d9d6cf');
+          m.box(u0 + 0.25, v0 + 0.25, H + 0.38, p.w - 0.5, p.d - 0.5, 0.02, roofCol, { noOutline: true });
+        } else if (b.roof === 'hipped') m.hip(u0 - over, v0 - over, H, p.w + over * 2, p.d + over * 2, rh * 0.85, roofCol);
+        else m.gable(u0 - over, v0 - over, H, p.w + over * 2, p.d + over * 2, rh, (p.w >= p.d) !== (b.ridge === 'short') ? 'u' : 'v', roofCol); // ridge: along the long side, or the short one (double house)
         top = Math.max(top, H + rh);
       }
       // windows on the two visible faces (+u right, +v left)
       if (small || barn) continue;
-      const levels = chapel || barnKind ? 1 : b.levels;
+      const levels = chapel || barnKind ? 1 : p.levels || b.levels;
       for (const axis of ['u', 'v']) {
         const len = axis === 'u' ? p.d : p.w, f = axis === 'u' ? p.u + p.w / 2 : p.v + p.d / 2, c0 = axis === 'u' ? v0 : u0;
         const n = Math.max(1, Math.floor((len - 1.2) / (barnKind ? 5 : dairy ? 3.6 : 3.1)));
@@ -103,7 +112,8 @@
         onFace(doorAxis, f, c, 0, 0, H - 1.4, 0.14, 1.4, 1.1, '#7a4a2a');
       }
     }
-    if (!small && homey && i % 3 !== 2) { const p = parts[0]; m.cbox(p.u + p.w * 0.2, p.v - p.d * 0.15, top - 1.2, 0.7, 0.7, 1.6, '#a8604c', b.oneRoof ? { key: 2e6 } : undefined); }
+    let chimney = null;
+    if (!small && homey && !b.modern && i % 3 !== 2) { const p = parts[0], cu = p.u + p.w * 0.2, cv = p.v - p.d * 0.15; m.cbox(cu, cv, top - 1.2, 0.7, 0.7, 1.6, '#a8604c', b.oneRoof ? { key: 2e6 } : undefined); const w = I.unrot(cu, cv); chimney = [w[0], w[1], top + 0.5]; }
 
     // door on the street-facing visible face, in line with the main block
     const doorCol = small || barnKind ? '#e4e0d8' : chapel ? '#7a4a2a' : dairy ? '#7f8c99' : DOORS[i % DOORS.length];
@@ -155,7 +165,7 @@
       bellTop = th + 1; top = th + 4;
     }
     const r = m.render();
-    r.height = top; r.bellTop = bellTop; r.steam = steam;
+    r.height = top; r.bellTop = bellTop; r.steam = steam; r.chimney = chimney;
     return r;
   };
 
@@ -419,6 +429,18 @@
       [-0.9, 0.9].forEach((x) => m.cbox(x, 0.85, 0.95, 0.12, 0.22, 0.14, '#e8d53a', { noOutline: true }));
       [-0.5, 0.5].forEach((x) => m.cbox(x, 1.88, 0.62, 0.3, 0.06, 0.26, '#fff8c0', { noOutline: true, light: '#fff2a0' }));
       [-0.55, 0.55].forEach((x) => m.cbox(x, -1.88, 0.6, 0.26, 0.06, 0.2, '#e03a3a', { noOutline: true }));
+    } else if (type === 'celica') {
+      // Toyota Celica: low sporty coupé, long bonnet, cabin set back, sloping back, rear spoiler, pop-up lights
+      m.shadow(-0.9, -2.2, 1.8, 4.4, 1.1);
+      [[-0.8, 1.35], [0.8, 1.35], [-0.8, -1.3], [0.8, -1.3]].forEach(([x, z]) => wheel(x, z, 0.3));
+      m.cbox(0, 0, 0.25, 1.75, 4.3, 0.5, color);
+      m.cbox(0, -0.45, 0.75, 1.55, 1.9, 0.42, color);
+      panels(0, -0.45, 0.8, 1.55, 1.9, 0.33, '#22303f');
+      m.cbox(0, -1.55, 0.75, 1.5, 0.5, 0.16, color); // sloping back
+      m.cbox(0, -2.08, 0.82, 1.6, 0.18, 0.06, '#1e1e22'); [-0.65, 0.65].forEach((x) => m.cbox(x, -2.05, 0.75, 0.06, 0.06, 0.08, '#1e1e22', { noOutline: true })); // spoiler
+      m.cbox(0, 0.1, 0.5, 1.8, 4.32, 0.06, '#1e1e22', { noOutline: true }); // black side trim
+      [-0.55, 0.55].forEach((x) => m.cbox(x, 2.17, 0.45, 0.32, 0.05, 0.12, '#fff8c0', { noOutline: true, light: '#fff2a0' }));
+      [-0.6, 0.6].forEach((x) => m.cbox(x, -2.17, 0.5, 0.36, 0.05, 0.12, '#e03a3a', { noOutline: true }));
     } else if (type === 'jeep') {
       // old army jeep: olive tub, flat bonnet, fold-down windscreen, open top with roll bar, spare wheel at the back
       m.shadow(-0.8, -1.75, 1.6, 3.5, 1.3);
@@ -448,6 +470,31 @@
       m.cbox(0, -0.75, 0.75, 1.3, 1.3, 0.5, color);
       m.cbox(0, -0.75, 1.25, 1.2, 1.2, 1.1, '#9ccbe0', { light: '#fff2c8' });
       m.cbox(0, -0.75, 2.35, 1.42, 1.42, 0.14, color);
+    } else if (type === 'combine') {
+      // combine harvester (Mähdrescher): big body, cab up front, wide reel and cutter bar, unloading pipe, straw out the back
+      m.shadow(-1.6, -3.4, 3.2, 7.4, 3.2);
+      [-1.15, 1.15].forEach((x) => m.cbox(x, 0.9, 0, 0.6, 1.7, 1.7, '#2a2a2e'));
+      [-1.0, 1.0].forEach((x) => m.cbox(x, -2.2, 0, 0.4, 1.0, 1.0, '#2a2a2e'));
+      m.cbox(0, -0.5, 0.8, 2.2, 5.0, 2.0, color);
+      m.cbox(0, -0.5, 2.8, 1.8, 3.4, 0.7, NB.shade(color, 0.85));
+      m.cbox(0, 1.5, 2.2, 1.3, 1.2, 1.3, '#9ccbe0', { light: '#fff2c8' });
+      m.cbox(0, 1.5, 3.5, 1.45, 1.35, 0.12, color);
+      m.cbox(0, 3.1, 0.25, 4.6, 1.0, 0.35, '#d9d4c4');
+      m.cbox(0, 3.3, 0.7, 4.4, 0.7, 0.7, '#e2b22a');
+      [-2.2, 2.2].forEach((x) => m.cbox(x, 3.2, 0.25, 0.12, 1.0, 1.2, '#c0392b'));
+      m.cbox(1.6, -0.6, 2.9, 2.2, 0.28, 0.28, '#7a7a80');
+      [-0.4, 0.4].forEach((x) => m.cbox(x, 2.2, 1.3, 0.2, 0.06, 0.16, '#fff8c0', { noOutline: true, light: '#fff2a0' }));
+    } else if (type === 'mower') {
+      // tractor with a side mower (Heuet) - the tractor plus a long cutter bar on the right
+      m.shadow(-0.95, -1.7, 1.9, 3.8, 1.7);
+      [-0.72, 0.72].forEach((x) => { m.cbox(x, -0.85, 0, 0.5, 1.5, 1.5, '#2a2a2e'); m.cbox(x + Math.sign(x) * 0.26, -0.85, 0.55, 0.06, 0.42, 0.42, '#e8c23a', { noOutline: true }); });
+      [-0.68, 0.68].forEach((x) => m.cbox(x, 1.3, 0, 0.3, 0.84, 0.84, '#2a2a2e'));
+      m.cbox(0, 0.15, 0.45, 1.1, 3.1, 0.35, '#3a3a40');
+      m.cbox(0, 1.15, 0.75, 1.0, 1.9, 0.75, color);
+      m.cbox(0, -0.75, 0.75, 1.3, 1.3, 0.5, color);
+      m.cbox(0, -0.75, 1.25, 1.2, 1.2, 1.1, '#9ccbe0', { light: '#fff2c8' });
+      m.cbox(0, -0.75, 2.35, 1.42, 1.42, 0.14, color);
+      m.cbox(1.9, -0.2, 0.1, 2.6, 0.35, 0.18, '#d23c2a');
     } else {
       m.shadow(-0.9, -2, 1.8, 4, 1.4);
       [[-0.9, 1.3], [0.9, 1.3], [-0.9, -1.3], [0.9, -1.3]].forEach(([x, z]) => wheel(x, z, 0.36));
@@ -772,6 +819,15 @@
         if (isB) for (let y = 5; y <= 10; y++) { setCh(rows, y, 4, 'h'); setCh(rows, y, 5, 'h'); }
         break;
       case 'straw': setRow(rows, 1, '...yyyy...'); setRow(rows, 2, '..yyyyyy..'); setRow(rows, 3, 'yyyyyyyyyy'); break;
+      case 'mitre': // the Samichlaus' bishop's hat: red with a gold cross band
+        setRow(rows, 0, '....cc....'); setRow(rows, 1, '...cyyc...'); setRow(rows, 2, '..ccyycc..'); setRow(rows, 3, '..cccccc..'); setRow(rows, 4, isS ? '..yyyyyyy.' : '.yyyyyyyy.');
+        break;
+      case 'hood': // Schmutzli: a dark brown hood down over the shoulders
+        setRow(rows, 1, '...cccc...'); setRow(rows, 2, '..cccccc..'); setRow(rows, 3, '.cccccccc.'); setRow(rows, 4, '.cccccccc.');
+        if (isF) { setRow(rows, 5, '.cssssssc.'); setRow(rows, 6, '.cessssec.'); setRow(rows, 7, '.cssssssc.'); }
+        else if (isB) for (let y = 5; y <= 8; y++) setRow(rows, y, '.cccccccc.');
+        else { setRow(rows, 5, '.cccsssss.'); setRow(rows, 6, '.cccssses.'); setRow(rows, 7, '.ccssssss.'); }
+        break;
       case 'headscarf':
         if (isF) { setRow(rows, 2, '...kkkk...'); setRow(rows, 3, '..kkkkkk..'); setRow(rows, 4, '.kkkkkkkk.'); setRow(rows, 5, '.kssssssk.'); }
         if (isB) { setRow(rows, 2, '...kkkk...'); setRow(rows, 3, '..kkkkkk..'); setRow(rows, 4, '.kkkkkkkk.'); setRow(rows, 5, '.kkkkkkkk.'); setRow(rows, 6, '.kkkkkkkk.'); setRow(rows, 7, '..kkkkkk..'); }
@@ -786,11 +842,24 @@
       if (isF) { setRow(rows, 7, '.hssssssh.'); setRow(rows, 8, '..hhmmhh..'); }
       if (isS) { setRow(rows, 7, '..hhhhssss'); setRow(rows, 8, '...hhhhh..'); }
     }
+    if (L.longBeard) { // down over the chest (Samichlaus)
+      if (isF) { setRow(rows, 8, '.hhhmmhhh.'); setRow(rows, 9, '.hhhhhhhh.'); setRow(rows, 10, '..hhhhhh..'); setRow(rows, 11, '...hhhh...'); }
+      if (isS) { setRow(rows, 8, '...hhhhhh.'); setRow(rows, 9, '...thhhh..'); setRow(rows, 10, '...tthh...'); }
+    }
+    if (L.robe) { // a long robe down to the shoes
+      for (let y = 13; y <= 16; y++) rows[y] = isS ? '..dddddd..' : '.dddddddd.';
+    }
     if (L.dress) {
       if (isF || isB) { setRow(rows, 13, '.dddddddd.'); setRow(rows, 14, '.dddddddd.'); } else { setRow(rows, 13, '..dddddd..'); setRow(rows, 14, '..dddddd..'); }
       for (let y = 15; y <= 16; y++) rows[y] = rows[y].replace(/p/g, 'l');
     }
     if (L.apron && !isB) for (let y = 10; y <= 14; y++) for (let x = isS ? 6 : 3; x <= (isS ? 7 : 6); x++) if (rows[y][x] !== '.') setCh(rows, y, x, 'a');
+    // Fasnacht mask over the eyes (front / side)
+    if (L.mask) {
+      if (isF) for (const x of [1, 2, 3, 4, 5, 6, 7, 8]) if (rows[6][x] === 's' || rows[6][x] === 'e') setCh(rows, 6, x, rows[6][x] === 'e' ? 'e' : 'q');
+      if (isF) { setCh(rows, 5, 1, 'q'); setCh(rows, 5, 8, 'q'); }
+      if (isS) for (let x = 4; x <= 9; x++) if (rows[6][x] === 's') setCh(rows, 6, x, 'q');
+    }
     // tracksuit: white stripes down the outside of the sleeves and trouser legs
     if (L.stripes) {
       if (isS) { for (let y = 10; y <= 11; y++) setCh(rows, y, 5, 'w'); for (let y = 13; y <= 16; y++) { const x = rows[y].indexOf('p'); if (x >= 0 && rows[y][x + 1] === 'p') setCh(rows, y, x + 1, 'w'); } }
@@ -815,7 +884,7 @@
     const colors = {
       h: L.hair, s: L.skin, e: '#2b2b3a', m: NB.shade(L.skin, 0.78), t: L.shirt, p: L.pants, f: L.shoes,
       g: '#1e1e28', c: L.cap || '#d94a4a', y: '#e8c860', a: L.apron || '#ffffff', d: L.dress || L.shirt, l: L.legs || L.skin, k: L.scarf || '#c0392b',
-      w: L.stripes || '#ffffff', x: (L.bands || [])[0] || '#ffd23f', z: (L.bands || [])[1] || '#2fbf71', o: L.flower || '#ff4f7a', r: '#f3c84a',
+      w: L.stripes || '#ffffff', q: L.mask || '#ffffff', x: (L.bands || [])[0] || '#ffd23f', z: (L.bands || [])[1] || '#2fbf71', o: L.flower || '#ff4f7a', r: '#f3c84a',
     };
     const col = (ch) => colors[ch];
     const build = (base, view, legs, post) => {
@@ -823,7 +892,8 @@
       rows[15] = legs[0]; rows[16] = legs[1]; rows[17] = legs[2];
       applyLook(rows, view, L);
       if (post) post(rows);
-      return I.rows(rows, col, { shadowW: 8, shadowH: 1.8 });
+      if (L.kid) { rows.splice(14, 1); rows.splice(11, 1); rows.splice(0, 1); } // a child: shorter body and legs
+      return I.rows(rows, col, { shadowW: L.kid ? 7 : 8, shadowH: 1.8 });
     };
     const wave = (top) => (rows) => { // right arm raised, hand at row `top`
       setCh(rows, 12, 8, 't'); setCh(rows, 12, 9, '.');
@@ -928,6 +998,329 @@
     };
     const make = (rows) => { const right = I.rows(rows, colorOf, { shadowW: 10, shadowH: 1.6 }); return { right, left: flipRec(right) }; };
     return { walk: [make(CAT.walk1), make(CAT.walk2)], sit: make(CAT.sit), sleep: make(CAT.sleep) };
+  };
+
+  // ---------- festivals and seasons ----------
+  // flag on a pole facing the viewer: 'ch' (Swiss: red with a white cross) or 'ag' (Aargau: black with white wave | blue
+  // with three white stars). phase 0/1: the cloth flutters
+  M.flag = function (kind, phase) {
+    const key = 'flag' + kind + phase;
+    if (!treeCache[key]) {
+      const m = I.model(I.towardCamera), w = 1.1, y0 = 3.3, k = phase ? 0.08 : -0.08;
+      m.shadow(-0.05, -0.05, 0.1, 0.1, 4.5);
+      m.cbox(0, 0, 0, 0.09, 0.09, 4.6, '#d8d8d8');
+      m.cbox(0, 0, 4.6, 0.16, 0.16, 0.1, '#e8c23a');
+      const cloth = (x0, x1, col, dz) => m.box(x0, dz || 0, y0, x1 - x0, 0.04, w, col, { noOutline: true });
+      if (kind === 'ch') {
+        cloth(0.05, 0.05 + w, '#d52b1e', k);
+        m.box(0.05 + w * 0.42, k + 0.05, y0 + w * 0.18, w * 0.16, 0.02, w * 0.64, '#ffffff', { noOutline: true });
+        m.box(0.05 + w * 0.18, k + 0.05, y0 + w * 0.42, w * 0.64, 0.02, w * 0.16, '#ffffff', { noOutline: true });
+      } else {
+        cloth(0.05, 0.05 + w / 2, '#1d1d1d', k); cloth(0.05 + w / 2, 0.05 + w, '#4fa3dc', -k);
+        for (let i = 0; i < 3; i++) m.box(0.05 + w * 0.12 + i * 0.1, k + 0.05, y0 + w * (0.2 + i * 0.25), 0.18, 0.02, 0.07, '#ffffff', { noOutline: true });
+        [[0.7, 0.75], [0.85, 0.45], [0.7, 0.2]].forEach(([u, v]) => m.box(0.05 + w * u, -k + 0.05, y0 + w * v, 0.1, 0.02, 0.1, '#ffffff', { noOutline: true }));
+      }
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  // festival tent (Festzelt): red and white striped roof on posts, closed back wall
+  M.festTent = function (heading) {
+    const key = 'tent' + Math.round(heading * 100);
+    if (!treeCache[key]) {
+      const m = I.model(heading), L = 6.4, D = 4.2, H = 2.3;
+      m.shadow(-L / 2, -D / 2, L, D, 3.4);
+      m.cbox(0, -D / 2 + 0.05, 0, L, 0.1, H, '#f4efe4');
+      [[-L / 2, D / 2], [L / 2, D / 2], [0, D / 2], [-L / 2, -D / 2], [L / 2, -D / 2]].forEach(([x, z]) => m.cbox(x, z, 0, 0.12, 0.12, H, '#cfcfcf'));
+      const n = 8, seg = L / n;
+      for (let i = 0; i < n; i++) m.gable(-L / 2 + i * seg, -D / 2 - 0.2, H, seg, D + 0.4, 1.1, 'u', i % 2 ? '#ffffff' : '#d52b1e');
+      m.cbox(0, 0.4, 0, L - 1, 0.7, 0.75, '#a8824f'); // the bar inside
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  M.grill = function (heading) {
+    const key = 'grill' + Math.round(heading * 100);
+    if (!treeCache[key]) {
+      const m = I.model(heading);
+      m.shadow(-0.6, -0.35, 1.2, 0.7, 0.9);
+      [[-0.5, -0.25], [0.5, -0.25], [-0.5, 0.25], [0.5, 0.25]].forEach(([x, z]) => m.cbox(x, z, 0, 0.06, 0.06, 0.75, '#3a3a40'));
+      m.cbox(0, 0, 0.7, 1.2, 0.6, 0.22, '#2e2e33');
+      m.cbox(0, 0, 0.9, 1.1, 0.5, 0.03, '#ff7a2a', { noOutline: true, light: '#ffb040' });
+      for (let i = 0; i < 5; i++) m.cbox(-0.4 + i * 0.2, 0, 0.94, 0.08, 0.36, 0.06, '#a8553a', { noOutline: true });
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  M.festTable = function (heading) {
+    const key = 'ftab' + Math.round(heading * 100);
+    if (!treeCache[key]) {
+      const m = I.model(heading);
+      m.shadow(-1.1, -0.95, 2.2, 1.9, 0.75);
+      m.cbox(0, 0, 0.72, 2.2, 0.6, 0.05, '#b8925a');
+      [-0.9, 0.9].forEach((x) => m.cbox(x, 0, 0, 0.06, 0.5, 0.72, '#6a6a70'));
+      [-0.9, 0.9].forEach((z) => { m.cbox(0, z, 0.42, 2.2, 0.26, 0.04, '#b8925a'); [-0.9, 0.9].forEach((x) => m.cbox(x, z, 0, 0.05, 0.2, 0.42, '#6a6a70')); });
+      m.cbox(-0.5, 0, 0.77, 0.08, 0.08, 0.16, '#f2c84a', { noOutline: true }); m.cbox(0.4, 0.1, 0.77, 0.08, 0.08, 0.16, '#f2c84a', { noOutline: true }); // beers
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  // banner on two poles: red band with a white cross and white bars ("125 Johr")
+  M.banner = function (heading) {
+    const key = 'banner' + Math.round(heading * 100);
+    if (!treeCache[key]) {
+      const m = I.model(heading);
+      m.shadow(-1.7, -0.1, 3.4, 0.2, 2.8);
+      [-1.6, 1.6].forEach((x) => m.cbox(x, 0, 0, 0.1, 0.1, 2.8, '#6b4a2e'));
+      m.cbox(0, 0, 1.9, 3.2, 0.05, 0.8, '#d52b1e');
+      m.cbox(-1.15, 0.04, 2.15, 0.12, 0.02, 0.4, '#ffffff', { noOutline: true }); m.cbox(-1.15, 0.04, 2.29, 0.4, 0.02, 0.12, '#ffffff', { noOutline: true });
+      [-0.55, -0.15, 0.25].forEach((x, i) => m.cbox(x, 0.04, 2.1 + (i === 1 ? 0.04 : 0), 0.22, 0.02, 0.5, '#ffffff', { noOutline: true })); // "125"
+      m.cbox(0.95, 0.04, 2.2, 0.9, 0.02, 0.1, '#ffffff', { noOutline: true }); m.cbox(0.95, 0.04, 2.38, 0.9, 0.02, 0.08, '#ffffff', { noOutline: true });
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  // the 1.-August bonfire: a big pile of logs and branches
+  M.woodPile = function (burnt) {
+    const key = 'wood' + (burnt ? 'b' : '');
+    if (!treeCache[key]) {
+      const m = I.model(), r = NB.seeded(81);
+      m.shadow(-1.6, -1.6, 3.2, 3.2, 2.5);
+      if (burnt) { m.cbox(0, 0, 0, 3.0, 3.0, 0.25, '#3a3230'); m.cbox(0, 0, 0.25, 1.6, 1.6, 0.25, '#2a2422'); }
+      else {
+        m.pyramid(-1.6, -1.6, 0, 3.2, 3.2, 3.4, '#7a5a3a');
+        for (let i = 0; i < 9; i++) { const a = r() * 6.28, d = 0.6 + r() * 0.8; m.cbox(Math.cos(a) * d, Math.sin(a) * d, r() * 1.2, 0.18, 0.18, 1.2, i % 2 ? '#8a6a48' : '#5e4630'); }
+      }
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  // Christmas tree with coloured lights (they glow at night)
+  M.xmasTree = function () {
+    if (!treeCache.xmas) {
+      const m = I.model(), r = NB.seeded(12);
+      m.shadow(-1.1, -1.1, 2.2, 2.2, 4.5);
+      m.cbox(0, 0, 0, 0.3, 0.3, 0.6, '#6b4a2e');
+      [[2.2, 0.5, 1.6], [1.7, 1.6, 1.5], [1.2, 2.6, 1.4], [0.7, 3.5, 1.2]].forEach(([w, y, h]) => m.pyramid(-w / 2, -w / 2, y, w, w, h, '#2f6a3a'));
+      const cols = ['#ff4a4a', '#ffd23f', '#4fa3ff', '#ff8af0', '#ffffff'];
+      for (let i = 0; i < 22; i++) { const y = 0.7 + r() * 3.3, w = (2.2 - (y - 0.5) * 0.45) / 2 * 0.85, a = r() * 6.28; m.cbox(Math.cos(a) * w * 0.7, Math.sin(a) * w * 0.7, y, 0.1, 0.1, 0.1, cols[i % 5], { noOutline: true, light: cols[i % 5] }); }
+      m.cbox(0, 0, 4.7, 0.3, 0.3, 0.3, '#ffd23f', { light: '#ffe680' });
+      treeCache.xmas = m.render();
+    }
+    return treeCache.xmas;
+  };
+  // snowman, built in stages (1 = a ball, 2 = two, 3 = with head, hat, carrot and stick arms)
+  M.snowman = function (stage) {
+    const key = 'snowman' + stage;
+    if (!treeCache[key]) {
+      const m = I.model(I.towardCamera);
+      m.shadow(-0.5, -0.5, 1, 1, stage * 0.6);
+      const ball = (y, r) => { m.cbox(0, 0, y, r * 2, r * 1.6, r * 2, '#f6f8fc'); m.cbox(0, 0, y + r * 0.2, r * 1.6, r * 2, r * 1.6, '#f6f8fc'); };
+      ball(0, 0.5);
+      if (stage >= 2) ball(0.85, 0.36);
+      if (stage >= 3) {
+        ball(1.45, 0.25);
+        m.cbox(0, 0.28, 1.68, 0.06, 0.25, 0.06, '#f08a2a', { noOutline: true });
+        [-0.08, 0.08].forEach((x) => m.cbox(x, 0.24, 1.78, 0.05, 0.02, 0.05, '#1a1a1a', { noOutline: true }));
+        m.cbox(0, 0, 1.92, 0.5, 0.5, 0.05, '#1a1a1a'); m.cbox(0, 0, 1.96, 0.32, 0.32, 0.3, '#1a1a1a');
+        [-1, 1].forEach((sx) => m.cbox(sx * 0.5, 0, 1.05, 0.5, 0.05, 0.05, '#5e4630'));
+        m.cbox(0, 0.15, 1.25, 0.6, 0.12, 0.1, '#d52b1e', { noOutline: true });
+      }
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  // scaffolding round a building being rebuilt (model frame = the building's u/v box)
+  M.scaffold = function (w, d, h) {
+    const key = 'scaf' + w.toFixed(1) + d.toFixed(1) + h.toFixed(1);
+    if (!treeCache[key]) {
+      const m = I.model(), o = 0.9, x0 = -w / 2 - o, x1 = w / 2 + o, z0 = -d / 2 - o, z1 = d / 2 + o;
+      const pole = (x, z) => m.cbox(x, z, 0, 0.08, 0.08, h, '#9aa0a8');
+      for (let x = x0; x <= x1 + 0.01; x += (x1 - x0) / Math.max(2, Math.round((x1 - x0) / 2.2))) { pole(x, z1); }
+      for (let z = z0; z <= z1 + 0.01; z += (z1 - z0) / Math.max(2, Math.round((z1 - z0) / 2.2))) { pole(x1, z); }
+      for (let y = 1.9; y < h; y += 1.9) {
+        m.box(x0, z1 - 0.35, y, x1 - x0, 0.7, 0.06, '#c8a46a'); m.box(x1 - 0.35, z0, y, 0.7, z1 - z0, 0.06, '#c8a46a');
+        m.box(x0, z1 + 0.3, y + 0.9, x1 - x0, 0.05, 0.05, '#e8c23a', { noOutline: true }); m.box(x1 + 0.3, z0, y + 0.9, 0.05, z1 - z0, 0.05, '#e8c23a', { noOutline: true });
+      }
+      treeCache[key] = m.render({ noOutline: true });
+    }
+    return treeCache[key];
+  };
+  const SPR = (rows, cols, o) => I.rows(rows, (ch) => cols[ch], o);
+  const sideSet = (rows, cols, o) => { const r = SPR(rows, cols, o); return { right: r, left: flipRec(r) }; };
+  // Easter egg (one of five colours with a stripe)
+  M.egg = function (i) {
+    const key = 'egg' + (i % 5);
+    if (!treeCache[key]) {
+      const c = [['#ff5a8a', '#ffd23f'], ['#4fa3ff', '#ffffff'], ['#5bd06a', '#ff5a8a'], ['#ffd23f', '#4f7aff'], ['#b06aff', '#ffffff']][i % 5];
+      treeCache[key] = SPR(['.aa.', 'aaaa', 'bbbb', 'aaaa', '.aa.'], { a: c[0], b: c[1] }, { shadowW: 4, shadowH: 1 });
+    }
+    return treeCache[key];
+  };
+  M.mouse = () => treeCache.mouse || (treeCache.mouse = SPR(['.gg..', 'ggggt', '.e...'].map((r) => r.replace('e', 'g')), { g: '#8a8580', t: '#c09090' }, { shadowW: 4, shadowH: 1 }));
+  // ---------- more animals (drawn facing right) ----------
+  M.owl = function () {
+    if (!treeCache.owl) {
+      const C = { b: '#7a5a3a', l: '#c8a878', e: '#ffd23f', k: '#1a1a1a', n: '#e8a23b' };
+      const open = SPR(['.b..b.', 'bbbbbb', 'beebeb'.replace('beebeb', 'bekbek'), 'bblnbb', 'blllbb', 'bllllb', '.bllb.', '.n..n.'], C, { shadow: false });
+      const shut = SPR(['.b..b.', 'bbbbbb', 'bbbbbb', 'bblnbb', 'blllbb', 'bllllb', '.bllb.', '.n..n.'], C, { shadow: false });
+      treeCache.owl = { open, shut };
+    }
+    return treeCache.owl;
+  };
+  M.hedgehog = function () {
+    if (!treeCache.hog) {
+      const C = { s: '#5e4a3a', d: '#3a2e26', f: '#c8a07a', e: '#1a1a1a' };
+      treeCache.hog = {
+        walk: [sideSet(['..sdsds..', '.sdsdsdsf', 'sdsdsdsfe', '.ff..ff..'], C, { shadowW: 8, shadowH: 1 }), sideSet(['..sdsds..', '.sdsdsdsf', 'sdsdsdsfe', 'f..ff..f.'], C, { shadowW: 8, shadowH: 1 })],
+        ball: sideSet(['..dsd..', '.sdsds.', 'dsdsdsd', '.sdsds.'], C, { shadowW: 7, shadowH: 1 }),
+      };
+    }
+    return treeCache.hog;
+  };
+  M.fox = function () {
+    if (!treeCache.fox) {
+      const C = { o: '#d8662a', w: '#f6f0e4', k: '#1e1a18', e: '#1a1a1a' };
+      treeCache.fox = { walk: [
+        sideSet(['..........k.k.', '..........ooo.', 'ww........oeoo', '.oo......oowwk', '..ooooooooww..', '..oooooooo....', '..k.k...k.k...'], C, { shadowW: 12, shadowH: 1.5 }),
+        sideSet(['..........k.k.', '..........ooo.', 'ww........oeoo', '.oo......oowwk', '..ooooooooww..', '..oooooooo....', '.k...k.k...k..'], C, { shadowW: 12, shadowH: 1.5 }),
+      ] };
+    }
+    return treeCache.fox;
+  };
+  M.stork = function () {
+    if (!treeCache.stork) {
+      const C = { w: '#f6f6f2', k: '#1e1e22', r: '#e0402a', e: '#1a1a1a' };
+      treeCache.stork = {
+        stand: sideSet(['.....ww.', '.....wer', '.....w.r', '....ww..', 'kkwwww..', '.kwwww..', '..kkw...', '...r....', '...r....', '...r....', '..rr....'], C, { shadowW: 5, shadowH: 1 }),
+        walk: sideSet(['.....ww.', '.....wer', '.....w.r', '....ww..', 'kkwwww..', '.kwwww..', '..kkw...', '...rr...', '..r..r..', '..r..r..', '.rr..rr.'], C, { shadowW: 5, shadowH: 1 }),
+        peck: sideSet(['........', '........', '........', '........', 'kkwwwww.', '.kwwwwww', '..kkw.we', '...r...r', '...r...r', '...r....', '..rr....'], C, { shadowW: 5, shadowH: 1 }),
+        fly: sideSet(['kk.......', '.kkw.....', '..wwwwwwe', 'kkwwwwwwr', '.kk......'], C, { shadow: false }),
+      };
+    }
+    return treeCache.stork;
+  };
+  M.cow = function (v) {
+    const key = 'cow' + (v % 3);
+    if (!treeCache[key]) {
+      const base = ['#f4f0e8', '#8a5a3a', '#f4f0e8'][v % 3], spot = ['#2a2420', '#f4f0e8', '#9a6a40'][v % 3];
+      const C = { b: base, s: spot, p: '#f0b0a8', h: '#d8d0c0', k: '#3a3030', e: '#1a1a1a', y: '#e8c23a' };
+      const H1 = ['............h.h.', '............bbbb', '............bebb', '...........ybbpp'];
+      const body = (legs) => [...H1, '.bbssbbbbsbb....', 'bbbsssbbbbbb....', 'bbbbsbbbssbb....', '.bbbbbbbbbbb....', ...legs];
+      treeCache[key] = {
+        walk: [sideSet(body(['.k.k....k.k.....', '.k.k....k.k.....']), C, { shadowW: 14, shadowH: 1.8 }), sideSet(body(['k...k..k...k....', 'k...k..k...k....']), C, { shadowW: 14, shadowH: 1.8 })],
+        graze: sideSet(['................', '................', '................', '.bbssbbbbsbb....', 'bbbsssbbbbbbb...', 'bbbbsbbbssbbbb..', '.bbbbbbbbbbbbbh.', '.k.k....k.k.bebb', '.k.k....k.k..ypp'], C, { shadowW: 14, shadowH: 1.8 }),
+        lie: sideSet(['................', '................', ...H1, '.bbssbbbbsbb....', 'bbbsssbbbbbb....', '.kbbbbbbbbbk....'], C, { shadowW: 14, shadowH: 1.6 }),
+      };
+    }
+    return treeCache[key];
+  };
+
+  // ---------- wayside cross (Wegchrüz) at the viewpoint: dark wood, a little roof, a small figure, flowers at the foot ----------
+  M.wayCross = function (heading) {
+    const key = 'cross' + Math.round(heading * 100);
+    if (!treeCache[key]) {
+      const m = I.model(heading);
+      m.shadow(-0.4, -0.3, 0.8, 0.6, 3.2);
+      m.cbox(0, 0, 0, 0.6, 0.45, 0.3, '#9a958a'); // stone foot
+      m.cbox(0, 0, 0.3, 0.16, 0.16, 2.9, '#5a3d26');
+      m.cbox(0, 0, 2.2, 1.3, 0.14, 0.16, '#5a3d26');
+      m.gable(-0.3, -0.25, 3.2, 0.6, 0.5, 0.25, 'u', '#3f4a3a'); // little roof
+      m.cbox(0, 0.1, 1.75, 0.08, 0.04, 0.55, '#d8c8a8', { noOutline: true }); m.cbox(0, 0.1, 2.22, 0.6, 0.04, 0.07, '#d8c8a8', { noOutline: true }); // the figure
+      [-0.22, 0.22].forEach((x, i) => m.cbox(x, 0.2, 0.3, 0.12, 0.12, 0.14, i ? '#e85a7a' : '#f2d23a', { noOutline: true })); // flowers
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  // ---------- garden railway (Ifangweg 18): a red loco, coaches, wagons; heading in 16 steps ----------
+  M.miniCar = function (kind, heading) {
+    const b = ((Math.round(heading / (Math.PI / 8)) % 16) + 16) % 16, key = 'mini' + kind + b;
+    if (!treeCache[key]) {
+      const m = I.model((b * Math.PI) / 8), L = kind === 'loco' ? 0.62 : 0.55;
+      m.shadow(-0.12, -L / 2, 0.24, L, 0.1);
+      m.cbox(0, 0, 0.03, 0.2, L - 0.04, 0.06, '#2a2a2e'); // chassis + wheels
+      if (kind === 'loco') { // red electric loco (Swiss style), pantograph on top
+        m.cbox(0, 0, 0.09, 0.22, L - 0.06, 0.2, '#c8202a'); m.cbox(0, 0, 0.29, 0.18, L - 0.16, 0.03, '#7a7a80');
+        m.cbox(0, L / 2 - 0.05, 0.17, 0.16, 0.02, 0.07, '#9fd0f0', { noOutline: true }); m.cbox(0, 0, 0.32, 0.04, 0.16, 0.05, '#2a2a2e', { noOutline: true });
+      } else if (kind === 'coach') { m.cbox(0, 0, 0.09, 0.21, L - 0.06, 0.18, '#3a8a4a'); m.cbox(0.11, 0, 0.17, 0.01, L - 0.14, 0.06, '#e8eef2', { noOutline: true }); m.cbox(-0.11, 0, 0.17, 0.01, L - 0.14, 0.06, '#e8eef2', { noOutline: true }); m.cbox(0, 0, 0.27, 0.19, L - 0.08, 0.03, '#5a5a60'); }
+      else { m.cbox(0, 0, 0.09, 0.21, L - 0.06, 0.14, '#8a5a32'); m.cbox(0, 0, 0.23, 0.15, L - 0.16, 0.06, '#5a4a3a', { noOutline: true }); }
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  // little buildings and trees between the tracks
+  M.miniProp = function (kind, v) {
+    const key = 'miniP' + kind + (v || 0);
+    if (!treeCache[key]) {
+      const m0 = I.model(I.towardCamera + (v || 0) * 0.7), K = 1.5, sc = (n) => (a) => a.map((x, i) => (i < n && typeof x === 'number' ? x * K : x));
+      const m = { cbox: (...a) => m0.cbox(...sc(6)(a)), gable: (...a) => m0.gable(...sc(6)(a)), pyramid: (...a) => m0.pyramid(...sc(6)(a)), shadow: (...a) => m0.shadow(...sc(5)(a)), render: () => m0.render() }; // G scale, drawn a bit bigger so they read
+      const walls = ['#f2e6c8', '#e8d8d0', '#dfe8ee'][(v || 0) % 3], roofs = ['#a8553a', '#6a5a4a', '#8a4a3a'][(v || 0) % 3];
+      if (kind === 'house') { m.shadow(-0.25, -0.2, 0.5, 0.4, 0.4); m.cbox(0, 0, 0, 0.45, 0.35, 0.3, walls); m.gable(-0.27, -0.21, 0.3, 0.54, 0.42, 0.2, 'u', roofs); m.cbox(0, 0.18, 0.08, 0.1, 0.01, 0.1, '#6aa4d8', { noOutline: true }); }
+      else if (kind === 'church') { m.shadow(-0.3, -0.2, 0.6, 0.4, 0.6); m.cbox(0, 0, 0, 0.5, 0.32, 0.3, '#f6f2ea'); m.gable(-0.27, -0.18, 0.3, 0.54, 0.36, 0.2, 'u', '#7a7a86'); m.cbox(0.3, 0, 0, 0.14, 0.14, 0.6, '#f6f2ea'); m.pyramid(0.23, -0.07, 0.6, 0.14, 0.14, 0.22, '#7a7a86'); }
+      else if (kind === 'station') { m.shadow(-0.6, -0.2, 1.2, 0.4, 0.3); m.cbox(0, 0, 0, 1.2, 0.3, 0.08, '#b8b2a6'); m.cbox(0, -0.02, 0.08, 0.5, 0.22, 0.24, '#f0e2b8'); m.gable(-0.32, -0.16, 0.32, 0.64, 0.3, 0.12, 'u', '#8a4a3a'); m.cbox(0.45, 0, 0.08, 0.02, 0.02, 0.3, '#3a3a3a'); m.cbox(0.45, 0, 0.36, 0.14, 0.02, 0.05, '#ffffff', { noOutline: true }); }
+      else { m.shadow(-0.12, -0.12, 0.24, 0.24, 0.4); m.cbox(0, 0, 0, 0.05, 0.05, 0.12, '#6b4a2e'); m.pyramid(-0.13, -0.13, 0.1, 0.26, 0.26, 0.38, ['#3f7a3a', '#2f6a3a', '#4f8a3a'][(v || 0) % 3]); }
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  // ---------- a small football goal (white posts, net behind), the open side facing +z of `heading` ----------
+  M.footballGoal = function (heading) {
+    const key = 'goal' + Math.round(heading * 100);
+    if (!treeCache[key]) {
+      const m = I.model(heading), L = 3, H = 1.4, D = 1;
+      m.shadow(-L / 2, -D, L, D, 0.6);
+      m.cbox(0, -D, 0, L, 0.04, H, '#dfe6ea', { noOutline: true }); // net (back)
+      [-L / 2, L / 2].forEach((x) => { m.cbox(x, -D / 2, 0, 0.04, D, H, '#dfe6ea', { noOutline: true }); m.cbox(x, 0, 0, 0.1, 0.1, H, '#ffffff'); });
+      m.cbox(0, 0, H, L + 0.1, 0.1, 0.1, '#ffffff');
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  // ---------- the Samichlaus' donkey (drawn facing right), with a sack on its back ----------
+  M.donkey = function () {
+    if (!treeCache.donkey) {
+      const C = { g: '#8a8580', d: '#5e5a56', w: '#d8d4cc', e: '#1a1a1a', k: '#3a3632', s: '#a8824f', t: '#7a5a3a' };
+      const top = ['............d.d.', '............d.d.', '...........gggg.', '...........gegw.', '...sssss..ggggww', '..ssttsss.gg....', '.gggggggggggg...', 'dggggggggggg....', '.gggggggggg.....', '.wgggggggww.....'];
+      treeCache.donkey = { walk: [sideSet([...top, '..k.k....k.k....', '..k.k....k.k....'], C, { shadowW: 13, shadowH: 1.6 }), sideSet([...top, '.k...k..k...k...', '.k...k..k...k...'], C, { shadowW: 13, shadowH: 1.6 })] };
+    }
+    return treeCache.donkey;
+  };
+  // ---------- Dorfmärt: a market stand with a striped awning and goods on the counter ----------
+  M.marketStand = function (heading, awning, goods) {
+    const key = 'stand' + Math.round(heading * 100) + awning + goods.join('');
+    if (!treeCache[key]) {
+      const m = I.model(heading), L = 2.8, D = 1.4, H = 2.2;
+      m.shadow(-L / 2, -D / 2, L, D, 2.6);
+      [[-L / 2, -D / 2], [L / 2, -D / 2], [-L / 2, D / 2], [L / 2, D / 2]].forEach(([x, z]) => m.cbox(x, z, 0, 0.08, 0.08, H, '#7a5a3a'));
+      m.cbox(0, 0.15, 0, L - 0.1, D - 0.4, 0.95, '#c8a46a'); // counter
+      goods.forEach((g, i) => m.cbox(-L / 2 + 0.45 + i * ((L - 0.9) / Math.max(1, goods.length - 1)), 0.25, 0.95, 0.42, 0.42, 0.22, g, { noOutline: true }));
+      const n = 6, seg = L / n;
+      for (let i = 0; i < n; i++) m.gable(-L / 2 + i * seg, -D / 2 - 0.25, H, seg, D + 0.6, 0.5, 'u', i % 2 ? '#ffffff' : awning);
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  // ---------- Rösslispiel (a small carousel): turns by frames, 8 frames per quarter turn ----------
+  M.carousel = function (frame) {
+    const key = 'carousel' + (frame % 8);
+    if (!treeCache[key]) {
+      const rot = ((frame % 8) / 8) * (Math.PI / 2), m = I.model(rot), R = 2.3;
+      m.shadow(-R, -R, R * 2, R * 2, 3.6);
+      m.cbox(0, 0, 0, R * 2, R * 2, 0.3, '#c8a46a'); m.cbox(0, 0, 0, R * 1.5, R * 2.1, 0.3, '#c8a46a'); m.cbox(0, 0, 0, R * 2.1, R * 1.5, 0.3, '#c8a46a');
+      m.cbox(0, 0, 0.3, 0.5, 0.5, 2.6, '#f2c84a');
+      const cols = ['#ffffff', '#8a5a3a', '#2a2a2a', '#d8c8a8'];
+      [[1, 0], [0, 1], [-1, 0], [0, -1]].forEach(([x, z], i) => {
+        const hx = x * R * 0.72, hz = z * R * 0.72;
+        m.cbox(hx, hz, 0.3, 0.06, 0.06, 2.6, '#e0e0e0', { noOutline: true });
+        m.cbox(hx, hz, 0.75 + (i % 2) * 0.25, z ? 0.9 : 0.3, x ? 0.9 : 0.3, 0.45, cols[i]); // a horse
+        m.cbox(hx + z * 0.45, hz + x * 0.45, 1.05 + (i % 2) * 0.25, 0.25, 0.25, 0.4, cols[i]);
+      });
+      m.pyramid(-R - 0.1, -R - 0.1, 2.9, R * 2 + 0.2, R * 2 + 0.2, 1.3, '#d52b1e');
+      m.cbox(0, 0, 2.75, R * 2 + 0.2, R * 2 + 0.2, 0.2, '#ffffff');
+      m.cbox(0, 0, 4.2, 0.12, 0.12, 0.5, '#f2c84a');
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
   };
 
   // ---------- small ground glow for lamps (additive, banded like pixel art) ----------

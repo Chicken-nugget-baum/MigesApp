@@ -59,7 +59,7 @@
   };
   E.startFire = function (b) {
     if (E.fire || !map.parkings || !map.parkings.dairy) return false;
-    NB.UI.discover('fire');
+    NB.UI.discover('fire'); NB.Fest.news('fire'); NB.UI.store.set('fireAt', Date.now());
     const F = (E.fire = { b, t: 0, intensity: 1, phase: 'burning', truck: null, crew: [], sirenT: 0, fxT: 0 });
     // a ring of places to watch from (17-23 m out, off the street), facing the fire
     const ring = [];
@@ -118,7 +118,16 @@
         if (map.inB(cx, cz) && map.walkCost[cz * map.w + cx]) spots.push({ x, z });
       }
       spots.sort((p, q) => Math.hypot(p.x - T.x, p.z - T.z) - Math.hypot(q.x - T.x, q.z - T.z)); // nearest the engine first
-      const front = spots.slice().sort((p, q) => (q.x + q.z) - (p.x + p.z))[0]; // towards the viewer: nothing hides the lead
+      // the lead (Raphy) fights it from behind the house (away from the street and the engine), on open lawn on the
+      // side facing the viewer: neither the dairy nor a neighbour's house hides him
+      let front = null, best = -Infinity;
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 16) for (const out of [6, 8]) {
+        const ca = Math.cos(b.angle), sa = Math.sin(b.angle), u = Math.cos(a) * (b.w / 2 + out), v = Math.sin(a) * (b.d / 2 + out);
+        const x = b.cx + u * ca - v * sa, z = b.cz + u * sa + v * ca, [cx, cz] = map.toCell(x, z);
+        if (!map.inB(cx, cz) || !map.walkCost[cz * map.w + cx] || map.inBuilding(x, z, 3.5) || map.streetDist(x, z) < 2) continue;
+        const score = Math.hypot(x - T.x, z - T.z) + (I.depth(x, z) > I.depth(b.cx, b.cz) ? 30 : 0) - out;
+        if (score > best) { best = score; front = { x, z }; }
+      }
       crew.forEach((d, i) => {
         const sp = d.lead && front ? front : (spots.filter((q) => q !== front)[i % Math.max(1, spots.length - 1)] || spots[0] || { x: T.x, z: T.z });
         const ff = add(new Firefighter(d, sp, T)); if (d.lead) { ff.lineT = 1.5; } F.crew.push(ff);
@@ -145,6 +154,41 @@
   // NB.Data.visitors: { members: [ids], car: { color, name, lines }, arrive: ['10:30', '13:00'], leave: ['20:00', '22:00'] }.
   // Arrival / departure times are drawn once per day. The car drives in on the Niederwilerstrasse, parks in Mige's
   // yard, the visitors get out and follow their routines; at leaving time they walk back to the car and it drives off.
+  // the way from a parking spot at a house to the Niederwilerstrasse: along the house's street to the end that joins
+  // the route, then the driveway (A* over the walk grid, not across the boule court). Shared by visitors and outings.
+  function homeRoad(P, street) {
+    const route = map.route;
+    const st = NB.Scene.streets.filter((q) => q.name === street && !q.kind).sort((a, b) => b.pts.length - a.pts.length)[0];
+    const dense = [];
+    st.pts.forEach(([x, z], k) => {
+      if (k) { const [x0, z0] = st.pts[k - 1], n = Math.max(1, Math.ceil(Math.hypot(x - x0, z - z0) / 2)); for (let j = 1; j <= n; j++) dense.push({ x: x0 + ((x - x0) * j) / n, z: z0 + ((z - z0) * j) / n }); }
+      else dense.push({ x, z });
+    });
+    const e = nearestIdx(dense, P);
+    // drive to the nearer end of the street that joins the route (counted along the street)
+    const endDist = (p) => Math.min(...route.map((q) => Math.hypot(q.x - p.x, q.z - p.z)));
+    const firstOk = endDist(dense[0]) < 4, lastOk = endDist(dense[dense.length - 1]) < 4;
+    const useFirst = firstOk && (!lastOk || e < dense.length - 1 - e) || (!firstOk && !lastOk && endDist(dense[0]) < endDist(dense[dense.length - 1]));
+    const toEnd = useFirst ? dense.slice(0, e + 1).reverse() : dense.slice(e);
+    const k = nearestIdx(route, toEnd[toEnd.length - 1]);
+    const [sx, sz] = map.toCell(dense[e].x, dense[e].z), [tx, tz] = map.toCell(P.x, P.z);
+    const cost = map.walkCost.slice(), K = map.kochProps;
+    if (K) for (let cz = 0; cz < map.h; cz++) for (let cx = 0; cx < map.w; cx++) {
+      const c = map.cellCentre(cx, cz), dx = c.x - K.court.x, dz = c.z - K.court.z;
+      const [a, b] = K.court.alongX ? [dx, dz] : [dz, dx];
+      if (Math.abs(a) < K.court.len / 2 + 1 && Math.abs(b) < K.court.wid / 2 + 1) cost[cz * map.w + cx] = 0;
+    }
+    const cells = NB.findPath(cost, map.w, map.h, sx, sz, tx, tz) || [];
+    const drive = cells.filter((_, j) => j % 3 === 2).map(({ x: cx, y: cz }) => Object.assign(map.cellCentre(cx, cz), { slow: true }));
+    return { toEnd, k, drive };
+  }
+  function roadPath(rd, P, arriving) {
+    const { toEnd, k, drive } = rd, route = map.route;
+    const out = Math.random() < 0.5 ? route.slice(k) : route.slice(0, k + 1).reverse(); // junction -> one end of the village
+    if (arriving) return laneOffset(out.slice().reverse().concat(toEnd.slice().reverse()), 1.4).concat(drive, [{ x: P.x, z: P.z, slow: true }]);
+    return drive.slice().reverse().concat(laneOffset(toEnd.concat(out), 1.4));
+  }
+
   class Visit {
     constructor(d, members, idx) {
       this.d = d; this.members = members; this.car = null; this.state = 'away'; this.leaveT = 0;
@@ -165,12 +209,15 @@
         else this.car = add(new Vehicle('bus', reverse == null ? false : !!reverse));
         return;
       }
-      this.car = add(new Vehicle(this.d.car.type || 'mini', reverse == null ? Math.random() < 0.5 : !!reverse, { parkAt: this.parking, parkedNow: !!instant, color: this.d.car.color, name: this.d.car.name, lines: this.d.car.lines }));
+      const road = this.d.street && !instant ? roadPath(this.rd || (this.rd = homeRoad(this.parking, this.d.street)), this.parking, true) : null; // up their street to the house
+      this.car = add(new Vehicle(this.d.car.type || 'mini', reverse == null ? Math.random() < 0.5 : !!reverse, { parkAt: this.parking, parkedNow: !!instant, color: this.d.car.color, name: this.d.car.name, lines: this.d.car.lines, path: road }));
       if (instant) this.members.forEach((m) => m.arrive(this.parking, true));
     }
     update(dt) {
       const min = NB.clock.minutes();
       if (this.state === 'away') { if (this.here(min)) this.start(false); return; }
+      if (this.d.park === 'dairy' && this.car && this.car.parked && !this.hooted) { this.hooted = true; NB.Audio.play('honkTruck', { pos: this.car }); setTimeout(() => NB.Audio.play('honkTruck', { pos: this.car }), 600); if (NB.UI.onScreen(this.car)) say(this.car, 'Tuuut-tuuut! Milch abhole! 🥛', { life: 2.5 }); }
+      if (this.car && !this.car.parked) this.hooted = this.hooted && this.state !== 'arriving';
       if (this.byBus) {
         if (this.state === 'arriving') { if (this.busHere() || !this.car || this.car.done) { this.state = 'visiting'; this.members.forEach((m, i) => m.arrive(this.parking, false, i)); this.car = null; } return; }
         if (this.state === 'visiting') { if (!this.here(min)) { this.state = 'leaving'; this.leaveT = 0; this.members.forEach((m) => m.goToCar(this.parking, true)); } return; }
@@ -190,7 +237,8 @@
         this.leaveT += dt;
         if (this.members.every((m) => m.away) || this.leaveT > 150) {
           this.members.forEach((m) => { if (!m.away) m.enterCar(); });
-          this.car.depart(Math.random() < 0.5); this.state = 'departing';
+          if (this.d.street) this.car.departAlong(roadPath(this.rd || (this.rd = homeRoad(this.parking, this.d.street)), this.parking, false)); else this.car.depart(Math.random() < 0.5);
+          this.state = 'departing';
         }
         return;
       }
@@ -221,42 +269,7 @@
     members(trip) { return E.list.filter((e) => e.kind === 'villager' && trip.members.includes(e.c.id)); }
     carOpts(extra) { return Object.assign({ color: this.d.car.color, name: this.d.car.name, lines: this.d.car.lines }, extra); }
     // road between the map edge and the parking spot: Niederwilerstrasse (route) -> own street -> driveway (A*)
-    road(arriving) {
-      if (!this.rd) {
-        const P = this.parking, route = map.route;
-        const st = NB.Scene.streets.filter((q) => q.name === this.d.street).sort((a, b) => b.pts.length - a.pts.length)[0];
-        const dense = [];
-        st.pts.forEach(([x, z], k) => {
-          if (k) { const [x0, z0] = st.pts[k - 1], n = Math.max(1, Math.ceil(Math.hypot(x - x0, z - z0) / 2)); for (let j = 1; j <= n; j++) dense.push({ x: x0 + ((x - x0) * j) / n, z: z0 + ((z - z0) * j) / n }); }
-          else dense.push({ x, z });
-        });
-        const e = nearestIdx(dense, P);
-        // drive to the nearer end of the street that joins the route (counted along the street)
-        const endDist = (p) => Math.min(...route.map((q) => Math.hypot(q.x - p.x, q.z - p.z)));
-        const firstOk = endDist(dense[0]) < 4, lastOk = endDist(dense[dense.length - 1]) < 4;
-        const useFirst = firstOk && (!lastOk || e < dense.length - 1 - e) || (!firstOk && !lastOk && endDist(dense[0]) < endDist(dense[dense.length - 1]));
-        const toEnd = useFirst ? dense.slice(0, e + 1).reverse() : dense.slice(e);
-        const k = nearestIdx(route, toEnd[toEnd.length - 1]);
-        const [sx, sz] = map.toCell(dense[e].x, dense[e].z), [tx, tz] = map.toCell(P.x, P.z);
-        // driveway over the lawn, not across the boule court / flower beds
-        const cost = map.walkCost.slice(), K = map.kochProps;
-        if (K) for (let cz = 0; cz < map.h; cz++) for (let cx = 0; cx < map.w; cx++) {
-          const c = map.cellCentre(cx, cz), dx = c.x - K.court.x, dz = c.z - K.court.z;
-          const [a, b] = K.court.alongX ? [dx, dz] : [dz, dx];
-          if (Math.abs(a) < K.court.len / 2 + 1 && Math.abs(b) < K.court.wid / 2 + 1) cost[cz * map.w + cx] = 0;
-        }
-        const cells = NB.findPath(cost, map.w, map.h, sx, sz, tx, tz) || [];
-        const drive = cells.filter((_, j) => j % 3 === 2).map(({ x: cx, y: cz }) => Object.assign(map.cellCentre(cx, cz), { slow: true }));
-        this.rd = { toEnd, k, drive };
-      }
-      const { toEnd, k, drive } = this.rd, route = map.route;
-      const out = Math.random() < 0.5 ? route.slice(k) : route.slice(0, k + 1).reverse(); // junction -> one end of the village
-      if (arriving) {
-        const road = out.slice().reverse().concat(toEnd.slice().reverse());
-        return laneOffset(road, 1.4).concat(drive, [{ x: this.parking.x, z: this.parking.z, slow: true }]);
-      }
-      return drive.slice().reverse().concat(laneOffset(toEnd.concat(out), 1.4));
-    }
+    road(arriving) { this.rd = this.rd || homeRoad(this.parking, this.d.street); return roadPath(this.rd, this.parking, arriving); }
     // road between home and a destination bay (the petrol station on the Bremgarterstrasse): driveway -> own
     // street -> Niederwilerstrasse to its north-east end -> main road -> bay (and back)
     roadTo(dest, back) {

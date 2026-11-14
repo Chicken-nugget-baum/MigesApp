@@ -3,8 +3,18 @@
 (function (NB) {
   const S = NB.Scene;
   S.buildings.forEach((b) => NB.Iso.snapBuilding(b)); // iso pixel art: buildings sit on the iso grid, doors on a visible face
+  // neighbours chat on the lane between Ifangweg 15 and 17 (map.spots.schwatz, set below once the map exists)
+  // a lane to a house ends right at its (snapped) front door: straight on from the street, then up to the door
+  for (const st of S.streets) {
+    const b = st.kind === 'lane' && st.to && S.buildings.find((q) => q.addr === st.to);
+    if (!b) continue;
+    const [p0, p1] = st.pts, dx = p1[0] - p0[0], dz = p1[1] - p0[1], l2 = dx * dx + dz * dz || 1;
+    const t = ((b.entry[0] - p0[0]) * dx + (b.entry[1] - p0[1]) * dz) / l2, bend = [p0[0] + dx * t, p0[1] + dz * t]; // on the lane's line, level with the door
+    st.pts = [p0, p1, bend, [b.door[0] + b.doorN[0] * 0.3, b.door[1] + b.doorN[1] * 0.3]].map(([x, z]) => [+x.toFixed(2), +z.toFixed(2)]);
+  }
   const C = 2; // metres per path-finding cell
   const [bx0, bz0, bx1, bz1] = S.bounds;
+  const tWorld = performance.now();
   const W = Math.ceil((bx1 - bx0) / C), H = Math.ceil((bz1 - bz0) / C);
   const map = (NB.map = {
     cell: C, w: W, h: H, x0: bx0, z0: bz0, bounds: S.bounds,
@@ -89,15 +99,17 @@
   map.animalCost = new Float32Array(N);
   map.duckCost = new Float32Array(N);
   map.onStreet = new Uint8Array(N);
+  map.sdGrid = new Float32Array(N); // street distance per cell (cheap lookups)
+  map.bldGrid = new Uint8Array(N); // 1 = inside / right next to a building
   for (let cz = 0; cz < H; cz++)
     for (let cx = 0; cx < W; cx++) {
       const { x, z } = map.cellCentre(cx, cz);
       const i = cz * W + cx;
       const pd = map.pondDist(x, z);
-      const blocked = map.inBuilding(x, z, 0.4) || pd < 0.6;
+      const inB = map.inBuilding(x, z, 0.4), blocked = inB || pd < 0.6;
       const sd = map.streetDist(x, z);
-      map.duckCost[i] = pd < -0.3 ? 1 : pd < 2.5 && !map.inBuilding(x, z, 0.4) ? 2.5 : 0; // ducks swim, sometimes waddle on the shore
-      map.onStreet[i] = sd < 0 ? 1 : 0;
+      map.duckCost[i] = pd < -0.3 ? 1 : pd < 2.5 && !inB ? 2.5 : 0; // ducks swim, sometimes waddle on the shore
+      map.onStreet[i] = sd < 0 ? 1 : 0; map.sdGrid[i] = sd; map.bldGrid[i] = inB ? 1 : 0;
       const field = sd > 2.5 && map.fieldAt(x, z);
       map.walkCost[i] = blocked ? 0 : sd < 0.5 ? 1 : sd < 2.5 ? 1.6 : field && field.kind !== 'meadow' ? 3.5 : 2.6; // people like streets and sidewalks, not crops
       map.animalCost[i] = blocked ? 0 : sd < 0 ? 2 : field ? 1.3 : 1; // cats prefer gardens
@@ -264,8 +276,16 @@
   if (ih) {
     const ca = Math.cos(ih.angle), sa = Math.sin(ih.angle);
     let side = null; // facade farthest from the street
+    const roadDist = (x, z) => { // distance to the real streets (not the little lane to Ifangweg 19, which runs past the house)
+      let d = Infinity;
+      for (const st of S.streets) if (st.kind !== 'lane') for (let i = 1; i < st.pts.length; i++) {
+        const [ax, az] = st.pts[i - 1], [bx, bz] = st.pts[i], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1, t = NB.clamp(((x - ax) * dx + (z - az) * dz) / l2, 0, 1);
+        d = Math.min(d, Math.hypot(x - ax - dx * t, z - az - dz * t) - st.width / 2);
+      }
+      return d;
+    };
     for (const [nx, nz, half] of [[ca, sa, ih.w / 2], [-ca, -sa, ih.w / 2], [-sa, ca, ih.d / 2], [sa, -ca, ih.d / 2]]) {
-      const px = ih.cx + nx * (half + 8), pz = ih.cz + nz * (half + 8), sd = map.streetDist(px, pz), blocked = map.inBuilding(px, pz, 2);
+      const px = ih.cx + nx * (half + 8), pz = ih.cz + nz * (half + 8), sd = roadDist(px, pz), blocked = map.inBuilding(px, pz, 2);
       if (!blocked && (!side || sd > side.sd)) side = { sd, n: [nx, nz], half, across: half === ih.w / 2 ? ih.d / 2 : ih.w / 2 };
     }
     const n = side.n, t = [-n[1], n[0]], B = [ih.cx + n[0] * side.half, ih.cz + n[1] * side.half];
@@ -296,13 +316,94 @@
       .concat(G.hyd.map((b) => ({ bush: b, stand: at(...(() => { const [a, m] = local(b.x, b.z); return [a + (a > 0 ? -1.6 : 1.6), m]; })()) })), [{ bush: at((G.veg.a0 + G.veg.a1) / 2, (G.veg.m0 + G.veg.m1) / 2), stand: at(G.veg.a1 + 1.2, (G.veg.m0 + G.veg.m1) / 2) }]);
     map.spots.garte = stations.map((st) => ({ x: st.stand.x, z: st.stand.z, face: faceTo(st.stand, st.bush), sit: false, bush: st.bush }));
     const box = (ps, r) => [Math.min(...ps.map((p) => p.x)) - r, Math.min(...ps.map((p) => p.z)) - r, Math.max(...ps.map((p) => p.x)) + r, Math.max(...ps.map((p) => p.z)) + r];
-    map.pois.terrasse = box(map.spots.terrasse, 1); map.pois.fuurstell = box(map.spots.fuurstell, 1); map.pois.garte = box(map.spots.garte, 1);
+    map.spots.spielwiese = [at(-1.5, 10), at(1.5, 11)].map((c) => ({ x: c.x, z: c.z, face: 0, sit: false })); // Iris and Nuria play tag on the lawn
+    G.play = at(0, 10.5);
+    map.pois.terrasse = box(map.spots.terrasse, 1); map.pois.fuurstell = box(map.spots.fuurstell, 1); map.pois.garte = box(map.spots.garte, 1); map.pois.spielwiese = box(map.spots.spielwiese, 1.5);
     // fields never reach into the garden; hedges, shed, table, pit are not walkable
     const fieldAt0 = map.fieldAt; map.fieldAt = (x, z) => (inside(x, z, 1) ? null : fieldAt0(x, z));
     const blockers = G.hedges.map((h) => ({ x: h.p.x, z: h.p.z, r: 1.6 })).concat([{ x: G.table.x, z: G.table.z, r: 0.8 }, { x: G.pit.x, z: G.pit.z, r: 0.9 }, { x: G.shed.x, z: G.shed.z, r: 1.6 }], G.trees.map((tr) => ({ x: tr.p.x, z: tr.p.z, r: 0.6 })));
     for (let cz = 0; cz < H; cz++) for (let cx = 0; cx < W; cx++) {
       const c = map.cellCentre(cx, cz), i = cz * W + cx;
       if (inside(c.x, c.z, 0) && map.walkCost[i]) map.walkCost[i] = Math.min(map.walkCost[i], 1.6); // a garden is nice to walk in
+      if (blockers.some((b) => Math.hypot(c.x - b.x, c.z - b.z) < b.r)) { map.walkCost[i] = 0; map.animalCost[i] = 0; }
+    }
+  }
+  // a parking spot in front of Iris's house (Ifangweg 15), between the house and the Ifangweg: Yves's Celica
+  const irisB = Object.values(map.buildings).find((b) => b.addr === 'Ifangweg 15');
+  if (irisB) {
+    const ifang = S.streets.filter((q) => q.name === 'Ifangweg' && !q.kind);
+    let best = null; // the point of the Ifangweg nearest the house
+    for (const q of ifang) for (let i = 1; i < q.pts.length; i++) {
+      const [ax, az] = q.pts[i - 1], [bx, bz] = q.pts[i], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
+      const t = NB.clamp(((irisB.cx - ax) * dx + (irisB.cz - az) * dz) / l2, 0, 1), x = ax + dx * t, z = az + dz * t, d = Math.hypot(irisB.cx - x, irisB.cz - z);
+      if (!best || d < best.d) best = { d, x, z, w: q.width, along: [dx / Math.sqrt(l2), dz / Math.sqrt(l2)] };
+    }
+    if (best) {
+      const n = [(irisB.cx - best.x) / best.d, (irisB.cz - best.z) / best.d], tc = [Math.sin(NB.Iso.towardCamera), Math.cos(NB.Iso.towardCamera)];
+      const seen = (x, z) => { for (let t = 0.5; t <= 14; t += 0.75) if (map.inBuilding(x + tc[0] * t, z + tc[1] * t, 0.3)) return false; return true; };
+      const cands = [];
+      for (const sd of [0, 3, -3, 6, -6, 9, -9, 12, -12]) for (const k of [2.6, 3.6]) {
+        const x = best.x + n[0] * (best.w / 2 + k) + best.along[0] * sd, z = best.z + n[1] * (best.w / 2 + k) + best.along[1] * sd, [cx, cz] = map.toCell(x, z);
+        if (map.inBuilding(x, z, 1.6) || !map.inB(cx, cz) || !map.walkCost[cz * W + cx] || (map.irisGarden && map.irisGarden.inside(x, z, 0.5)) || map.streetDist(x, z) < 1.2) continue;
+        cands.push({ x, z, ok: seen(x, z) && seen(x + best.along[0] * 2, z + best.along[1] * 2) && seen(x - best.along[0] * 2, z - best.along[1] * 2) });
+      }
+      const c = cands.find((q) => q.ok) || cands[0]; // one we can see, if there is one
+      if (c) { map.parkings = map.parkings || {}; map.parkings.iris = { x: c.x, z: c.z, heading: Math.atan2(best.along[0], best.along[1]) }; } // parallel to the street
+    }
+  }
+  {
+    const lane = S.streets.find((q) => q.kind === 'lane' && q.to === 'Ifangweg 19');
+    if (lane) {
+      const [a, b] = lane.pts, t = 0.75, p = { x: a[0] + (b[0] - a[0]) * t, z: a[1] + (b[1] - a[1]) * t }, l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, nx = -(b[1] - a[1]) / l, nz = (b[0] - a[0]) / l;
+      map.spots = map.spots || {};
+      map.spots.schwatz = [1, -1].map((k) => ({ x: p.x + nx * 0.9 * k, z: p.z + nz * 0.9 * k, face: Math.atan2(-nx * k, -nz * k), sit: false })); // facing each other
+      map.pois.schwatz = [p.x - 2, p.z - 2, p.x + 2, p.z + 2];
+    }
+  }
+  // Ifangweg 17 (Tanja, André, Louis, Nuria), from the aerial photo: the door faces the Ifangweg (north); a big lawn on
+  // the west side where Louis plays football (a goal at the far end), a paved terrace along the south and west of the
+  // house, beds along the hedges that André and Louis look after, a tree in the south-east corner
+  const th = Object.values(map.buildings).find((b) => b.lawn);
+  if (th) {
+    const U = [Math.cos(th.angle), Math.sin(th.angle)], V = [-Math.sin(th.angle), Math.cos(th.angle)];
+    const sv = V[0] * th.doorN[0] + V[1] * th.doorN[1] > 0 ? -1 : 1, su = U[0] < 0 ? -1 : 1; // +v away from the door, +u east
+    const at = (u, v) => ({ x: th.cx + U[0] * u * su + V[0] * v * sv, z: th.cz + U[1] * u * su + V[1] * v * sv });
+    const local = (x, z) => { const dx = x - th.cx, dz = z - th.cz; return [(dx * U[0] + dz * U[1]) * su, (dx * V[0] + dz * V[1]) * sv]; };
+    const hw = th.w / 2, hd = th.d / 2, U1 = hw + 1.5, V0 = -hd - 3, V1 = hd + 6;
+    // the lawn reaches west up to 12 m, but stops 1.5 m short of the neighbour's house (Ifangweg 21)
+    const clearCol = (u) => { for (let v = V0 - 1; v <= V1 + 1; v += 0.75) { const p = at(u, v), q = map.inBuilding(p.x, p.z, 1.5); if (q && q !== th) return false; } return true; };
+    let U0 = -hw - 12; while (U0 < -hw - 5 && !clearCol(U0 - 0.6)) U0 += 0.5;
+    const inside = (x, z, pad) => { const [u, v] = local(x, z), q = pad || 0; return u > U0 - q && u < U1 + q && v > V0 - q && v < V1 + q; };
+    const G = (map.tanjaGarden = { at, local, inside, U0, U1, V0, V1, hw, hd, hU: Math.atan2(U[0] * su, U[1] * su), hV: Math.atan2(V[0] * sv, V[1] * sv) });
+    G.terrace = [[-hw - 1.3, 0, hd + 0.2, hd + 3], [-hw - 1.3, -hw, -hd + 1, hd + 3]]; // [u0, u1, v0, v1]
+    G.table = at(-hw * 0.55, hd + 1.7); G.chairs = [at(-hw * 0.55 - 1.3, hd + 1.7), at(-hw * 0.55 + 1.3, hd + 1.7)];
+    G.lawn = { u0: U0 + 1, u1: -hw - 4, v0: V0 + 1, v1: hd + 3 }; // the play area: not right behind the house
+    G.goal = at(U0 + 1.2, (V0 + 1 + hd + 3) / 2); G.goalHalf = 1.5; // posts along v, facing +u
+    G.beds = [at(U0 + 0.9, V0 + 2), at(-hw - 3, V1 - 0.9), at(-hw + 3, V1 - 0.9), at(1, V1 - 0.9), at(U0 + 0.9, V1 - 2)];
+    G.tree = at(U1 - 1.5, V1 - 1.5);
+    G.hedges = [];
+    for (let v = V0; v < V1; v += 3) G.hedges.push({ p: at(U0 - 0.3, v + 1.5), h: G.hV, len: Math.min(3, V1 - v) });
+    for (let u = U0; u < U1; u += 3) G.hedges.push({ p: at(u + 1.5, V1 + 0.3), h: G.hU, len: Math.min(3, U1 - u) });
+    for (let u = U0; u < -hw - 3; u += 3) G.hedges.push({ p: at(u + 1.5, V0 - 0.3), h: G.hU, len: 3 });
+    G.hedges = G.hedges.filter((h) => !map.inBuilding(h.p.x, h.p.z, 1.6) && map.streetDist(h.p.x, h.p.z) > 1); // 3 m pieces: keep them off every house
+    G.beds = G.beds.filter((b) => !map.inBuilding(b.x, b.z, 1));
+    map.spots = map.spots || {};
+    const faceTo = (p, q) => Math.atan2(q.x - p.x, q.z - p.z), box = (ps, r) => [Math.min(...ps.map((p) => p.x)) - r, Math.min(...ps.map((p) => p.z)) - r, Math.max(...ps.map((p) => p.x)) + r, Math.max(...ps.map((p) => p.z)) + r];
+    map.spots.terrasse17 = G.chairs.map((c) => ({ x: c.x, z: c.z, face: faceTo(c, G.table), sit: true })).concat([at(-hw * 0.55, hd + 2.8)].map((c) => ({ x: c.x, z: c.z, face: faceTo(c, G.table), sit: false })));
+    map.spots.garte17 = G.beds.map((b) => { const [u, v] = local(b.x, b.z), st = at(u + (u < U0 + 2 ? 1.5 : 0), v + (v > V1 - 2 ? -1.5 : v < V0 + 3 ? 1.5 : 0)); return { x: st.x, z: st.z, face: faceTo(st, b), sit: false, bush: b }; });
+    const tc = [Math.sin(NB.Iso.towardCamera), Math.cos(NB.Iso.towardCamera)];
+    const seen = (p) => { for (let t = 0.5; t <= 12; t += 0.75) if (map.inBuilding(p.x + tc[0] * t, p.z + tc[1] * t, 0.3)) return false; return true; }; // no roof between it and us
+    const lawnPts = [];
+    for (let a = 0.1; a < 1; a += 0.15) for (let b = 0.1; b < 1; b += 0.15) { const L = G.lawn, p = at(L.u0 + (L.u1 - L.u0) * a, L.v0 + (L.v1 - L.v0) * b); if (seen(p)) lawnPts.push(p); }
+    G.seen = seen;
+    map.spots.fuessball = (lawnPts.length ? lawnPts : [at(G.lawn.u0 + 3, 0)]).filter((p, i) => i % 3 === 0).map((p) => ({ x: p.x, z: p.z, face: faceTo(p, G.goal), sit: false }));
+    map.pois.terrasse17 = box(map.spots.terrasse17, 1); map.pois.garte17 = box(map.spots.garte17, 1); map.pois.fuessball = box(map.spots.fuessball, 1.5);
+    const fieldAt1 = map.fieldAt; map.fieldAt = (x, z) => (inside(x, z, 1) ? null : fieldAt1(x, z));
+    const blockers = G.hedges.map((h) => ({ x: h.p.x, z: h.p.z, r: 1.6 })).concat([{ x: G.table.x, z: G.table.z, r: 0.8 }, { x: G.tree.x, z: G.tree.z, r: 0.6 }]);
+    for (let cz = 0; cz < H; cz++) for (let cx = 0; cx < W; cx++) {
+      const c = map.cellCentre(cx, cz), i = cz * W + cx;
+      if (!inside(c.x, c.z, 2)) continue;
+      if (inside(c.x, c.z, 0) && map.walkCost[i]) map.walkCost[i] = Math.min(map.walkCost[i], 1.6);
       if (blockers.some((b) => Math.hypot(c.x - b.x, c.z - b.z) < b.r)) { map.walkCost[i] = 0; map.animalCost[i] = 0; }
     }
   }
@@ -369,6 +470,78 @@
     map.pois.hirschgehege = [Math.min(...vis.map((v) => v.x)) - 1, Math.min(...vis.map((v) => v.z)) - 1, Math.max(...vis.map((v) => v.x)) + 1, Math.max(...vis.map((v) => v.z)) + 1];
     map.pois.fuettern = [feed.x - 1.5, feed.z - 1.5, feed.x + 1.5, feed.z + 1.5];
     map.pois.hirschfarm = map.pois.hirschgehege;
+  }
+  // Ifangweg 18 (Ernst and Regina): a big garden railway in the front garden (aerial photo): a long gravel bed on the
+  // west side running from the house to the street and a smaller one east of the door, each with track loops,
+  // little houses, a station and trees. Loops are closed polylines the trains run on (js/entities/villagers.js)
+  const rb = Object.values(map.buildings).find((b) => b.addr === 'Ifangweg 18');
+  if (rb) {
+    const n = rb.doorN, t = [-n[1], n[0]], E0 = rb.entryPt;
+    const tW = t[0] < 0 ? t : [-t[0], -t[1]]; // +a = west, towards Ifangweg 20
+    const at = (a, m) => ({ x: E0.x + tW[0] * a + n[0] * m, z: E0.z + tW[1] * a + n[1] * m });
+    // a stadium (rounded rectangle) along m, centre (a, m), half-length hl (straight part), radius r
+    const stadium = (a, m, hl, r, step) => {
+      const pts = [];
+      for (let k = 0; k <= 1; k++) {
+        const s = k ? -1 : 1;
+        for (let q = -hl; q <= hl; q += step) pts.push([a + r * s, m + q * s]);
+        for (let ang = 0; ang < Math.PI; ang += step / r) pts.push([a + r * s * Math.cos(ang), m + (hl + r * Math.sin(ang) * 0.999) * s]);
+      }
+      return pts;
+    };
+    const eight = (a, m, ra, rm, step) => { const pts = []; for (let u = 0; u < Math.PI * 2; u += step / Math.max(ra, rm)) { const d = 1 + Math.sin(u) ** 2; pts.push([a + (ra * Math.sin(u) * Math.cos(u)) / d * 1.6, m + (rm * Math.cos(u)) / d]); } return pts; };
+    const toW = (pts) => pts.map(([a, m]) => at(a, m));
+    const beds = [
+      { name: 'west', a: 7.6, m: 2.2, hl: 4.2, r: 1.9 }, // the long one, beside the house down to the street
+      { name: 'door', a: -3, m: 3.6, hl: 0.8, r: 1.9 },
+    ].filter((b) => [[b.a, b.m], [b.a + b.r, b.m + b.hl + b.r], [b.a - b.r, b.m - b.hl - b.r], [b.a + b.r, b.m - b.hl - b.r], [b.a - b.r, b.m + b.hl + b.r]].every(([a, m]) => { const p = at(a, m); return !map.inBuilding(p.x, p.z, 0.2) && map.streetDist(p.x, p.z) > 0.6; }));
+    if (beds.length) {
+      const R = (map.railway = { at, beds: [], loops: [], decor: [], n, tW });
+      for (const b of beds) {
+        b.outline = toW(stadium(b.a, b.m, b.hl, b.r + 0.35, 0.25)); // the gravel bed (a bit bigger than the outer track)
+        const main = toW(stadium(b.a, b.m, b.hl, b.r - 0.25, 0.15));
+        const inner = b.name === 'west' ? toW(eight(b.a, b.m, b.r * 0.55, b.hl + b.r * 0.4, 0.12)) : toW(eight(b.a, b.m, b.r * 0.6, b.hl + b.r * 0.5, 0.12));
+        R.beds.push(b); R.loops.push({ bed: b.name, pts: main, main: true }, { bed: b.name, pts: inner });
+        // the station by the outer track (west bed), little houses and trees inside the loops
+        if (b.name === 'west') R.decor.push({ kind: 'station', p: at(b.a - b.r - 0.05, b.m - 0.4) }, { kind: 'house', p: at(b.a + 0.9, b.m - b.hl - 0.5), v: 0 }, { kind: 'house', p: at(b.a - 0.8, b.m + b.hl + 0.6), v: 1 }, { kind: 'tree', p: at(b.a + 1.1, b.m + 1.6) }, { kind: 'tree', p: at(b.a - 1.1, b.m - 1.9) }, { kind: 'tree', p: at(b.a + 0.2, b.m + b.hl + 1.3) }, { kind: 'church', p: at(b.a - 0.9, b.m - b.hl - 0.4) });
+        else R.decor.push({ kind: 'house', p: at(b.a + 1.1, b.m + 1.4), v: 2 }, { kind: 'tree', p: at(b.a - 1.0, b.m - 1.6) }, { kind: 'tree', p: at(b.a + 1.2, b.m - 1.3) });
+      }
+      for (const L of R.loops) { L.cum = [0]; for (let i = 1; i <= L.pts.length; i++) { const p = L.pts[i - 1], q = L.pts[i % L.pts.length]; L.cum.push(L.cum[i - 1] + Math.hypot(q.x - p.x, q.z - p.z)); } L.len = L.cum[L.cum.length - 1]; }
+      // where Ernst stands to play (on the driveway between the beds) and where the others stand to watch
+      const BW = beds.find((b) => b.name === 'west'), BD = beds.find((b) => b.name === 'door');
+      const faceTo = (p, q) => Math.atan2(q.x - p.x, q.z - p.z);
+      const ctl = [];
+      if (BW) ctl.push({ p: at(BW.a - BW.r - 0.9, BW.m + 1.2), bed: at(BW.a, BW.m) });
+      if (BD) ctl.push({ p: at(BD.a + BD.r + 0.9, BD.m), bed: at(BD.a, BD.m) });
+      map.spots = map.spots || {};
+      map.spots.iisebahn = ctl.map((c) => ({ x: c.p.x, z: c.p.z, face: faceTo(c.p, c.bed), sit: false }));
+      const watch = [];
+      for (const b of beds) for (const [da, dm] of [[0, b.hl + b.r + 1.2], [b.r + 0.9, -b.hl], [-b.r - 0.9, -b.hl - 0.8], [b.r + 0.9, b.hl]]) { const p = at(b.a + da, b.m + dm); if (!map.inBuilding(p.x, p.z, 0.4) && map.streetDist(p.x, p.z) > -1.5 && !ctl.some((c) => Math.hypot(c.p.x - p.x, c.p.z - p.z) < 1)) watch.push({ x: p.x, z: p.z, face: faceTo(p, at(b.a, b.m)), sit: false }); }
+      map.spots.gartebahn = watch;
+      const box = (ps, r) => [Math.min(...ps.map((p) => p.x)) - r, Math.min(...ps.map((p) => p.z)) - r, Math.max(...ps.map((p) => p.x)) + r, Math.max(...ps.map((p) => p.z)) + r];
+      map.pois.iisebahn = box(map.spots.iisebahn, 1); map.pois.gartebahn = box(watch.length ? watch : map.spots.iisebahn, 1);
+      // the beds are not walked on
+      const inBed = (x, z) => beds.some((b) => { const dx = x - E0.x, dz = z - E0.z, a = dx * tW[0] + dz * tW[1], m = dx * n[0] + dz * n[1], qm = Math.max(0, Math.abs(m - b.m) - b.hl); return Math.hypot(a - b.a, qm) < b.r + 0.3; });
+      R.inBed = inBed;
+      for (let cz = 0; cz < H; cz++) for (let cx = 0; cx < W; cx++) { const c = map.cellCentre(cx, cz); if (Math.abs(c.x - E0.x) < 16 && Math.abs(c.z - E0.z) < 16 && inBed(c.x, c.z)) { map.walkCost[cz * W + cx] = 0; map.animalCost[cz * W + cx] = 0; } }
+    }
+  }
+  // the viewpoint on the Schänisweg (first curve after the houses): a bench looking down at Nesselnbach and a wayside
+  // cross beside it; a waypoint further along the track for the walk (js/entities/festivals.js)
+  if (S.viewpoint) {
+    const V = S.viewpoint, f = V.face, px = Math.cos(f), pz = -Math.sin(f); // across the view
+    map.viewpoint = { x: V.x, z: V.z, face: f, bench: { x: V.x, z: V.z }, cross: { x: V.x + px * 1.9 - Math.sin(f) * 0.4, z: V.z + pz * 1.9 - Math.cos(f) * 0.4 } };
+    map.spots = map.spots || {};
+    map.spots.aussicht = [-0.45, 0.45].map((k) => ({ x: V.x + px * k - Math.sin(f) * 0.25, z: V.z + pz * k - Math.cos(f) * 0.25, face: f, sit: true, bench: true }))
+      .concat([{ x: map.viewpoint.cross.x + Math.sin(f) * 1.1, z: map.viewpoint.cross.z + Math.cos(f) * 1.1, face: f + Math.PI, sit: false }, { x: V.x - px * 1.6, z: V.z - pz * 1.6, face: f, sit: false }]);
+    map.pois.aussicht = [V.x - 3, V.z - 3, V.x + 3, V.z + 3];
+    const fieldAtV = map.fieldAt; map.fieldAt = (x, z) => (Math.hypot(x - V.x, z - V.z) < 5 ? null : fieldAtV(x, z)); // a bit of meadow round the bench
+    const tr = S.streets.find((q) => q.name === 'Schänisweg' && q.kind === 'track');
+    if (tr) { // ~250 m further along the track: where the walk turns back
+      let d = 0, k = tr.pts.reduce((b, p, i) => (Math.hypot(p[0] - V.road[0], p[1] - V.road[1]) < Math.hypot(tr.pts[b][0] - V.road[0], tr.pts[b][1] - V.road[1]) ? i : b), 0);
+      while (k < tr.pts.length - 1 && d < 250) { d += Math.hypot(tr.pts[k + 1][0] - tr.pts[k][0], tr.pts[k + 1][1] - tr.pts[k][1]); k++; }
+      const [x, z] = tr.pts[k]; map.pois.feldwaeg = [x - 2, z - 2, x + 2, z + 2];
+    }
   }
   // POIs from older data that don't exist in this small scene
   const ALIAS = { casino: 'beiz', niederwil: 'niederwilerstrasse', reuss: 'kapellenweg', wald: 'kapellenweg', gnadenthal: 'kapellenweg', gartebahn: 'ifangweg', feld: 'kapellenweg', weide: 'kapellenweg', schuel: 'niederwilerstrasse' };
@@ -448,6 +621,128 @@
     }
   }
 
+  // ---------------- festivals, seasons, animals: where things go ----------------
+  // a free spot (x, z) between minD and maxD m from (cx, cz): nothing within `clear` m is a building, a street (2 m)
+  // or water; ok(x, z) for extra conditions. Nearest first.
+  const freeAt = (x, z, clear) => { // grid lookups only: every cell within `clear` m walkable, no building, 2 m off streets
+    const [c0, r0] = map.toCell(x, z), k = Math.ceil(clear / C);
+    for (let dz = -k; dz <= k; dz++) for (let dx = -k; dx <= k; dx++) {
+      if (dx * dx + dz * dz > k * k) continue;
+      const cx = c0 + dx, cz = r0 + dz;
+      if (!map.inB(cx, cz)) return false;
+      const i = cz * W + cx;
+      if (!map.walkCost[i] || map.bldGrid[i] || map.sdGrid[i] < 2) return false;
+    }
+    return true;
+  };
+  map.freeSpot = function (cx, cz, minD, maxD, clear, ok) {
+    for (let d = minD; d <= maxD; d += 2) for (let a = 0; a < 6.28; a += 2 / Math.max(d, 1)) {
+      const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
+      if (freeAt(x, z, clear) && (!ok || ok(x, z))) return { x, z };
+    }
+    return null;
+  };
+  const blockDisc = (x, z, r) => { // only the cells round (x, z)
+    const [c0, r0] = map.toCell(x, z), k = Math.ceil(r / C) + 1;
+    for (let cz = Math.max(0, r0 - k); cz <= Math.min(H - 1, r0 + k); cz++) for (let cx = Math.max(0, c0 - k); cx <= Math.min(W - 1, c0 + k); cx++) { const c = map.cellCentre(cx, cz); if (Math.hypot(c.x - x, c.z - z) < r) { map.walkCost[cz * W + cx] = 0; map.animalCost[cz * W + cx] = 0; } }
+  };
+  const poiC = (n) => { const a = map.pois[n]; return a && { x: (a[0] + a[2]) / 2, z: (a[1] + a[3]) / 2 }; };
+  {
+    const dp = poiC('dorfplatz');
+    // Dorffest (31 July / 1 August): festival tent, sausage grill and beer benches on the lawn next to the Dorfplatz;
+    // the 1.-August bonfire out on a field; spots: fest (benches + round the grill)
+    const lot = dp && map.freeSpot(dp.x, dp.z, 18, 70, 9, (x, z) => !map.fieldAt(x, z));
+    if (lot) {
+      const toDp = Math.atan2(dp.x - lot.x, dp.z - lot.z), fx = Math.sin(toDp), fz = Math.cos(toDp), sx = fz, sz = -fx; // f: towards the plaza
+      const at = (f, s) => ({ x: lot.x + fx * f + sx * s, z: lot.z + fz * f + sz * s });
+      const tent = at(-2.5, 0), grill = at(3, 4.5), tables = [at(2.5, -3), at(4.8, -0.5), at(5.5, -4.5)], banner = at(5.5, 3.5);
+      map.fest = { lot, heading: toDp, tent, grill, tables, banner };
+      const seats = [];
+      for (const t of tables) for (const k of [-0.8, 0, 0.8]) for (const sd of [-1, 1]) seats.push({ x: t.x + sx * k + fx * sd * 0.9, z: t.z + sz * k + fz * sd * 0.9, face: Math.atan2(-fx * sd, -fz * sd), sit: true });
+      for (let k = 0; k < 5; k++) { const a = toDp + Math.PI + (k - 2) * 0.55, g = { x: grill.x + Math.sin(a) * 1.8, z: grill.z + Math.cos(a) * 1.8 }; seats.push({ x: g.x, z: g.z, face: Math.atan2(grill.x - g.x, grill.z - g.z), sit: false }); }
+      map.festSpots = seats;
+      map.pois.fest = [lot.x - 7, lot.z - 7, lot.x + 7, lot.z + 7];
+      if (NB.cal && NB.cal.fest) {
+        map.spots = map.spots || {}; map.spots.fest = seats;
+        blockDisc(tent.x, tent.z, 3.2); blockDisc(grill.x, grill.z, 0.9); tables.forEach((t) => blockDisc(t.x, t.z, 0.7));
+      }
+    }
+    // the bonfire: on the nearest field, well away from houses
+    const bf = dp && map.freeSpot(dp.x, dp.z, 50, 200, 10, (x, z) => { const f = map.fieldAt(x, z); return f && !map.inBuilding(x, z, 15); });
+    map.bonfire = bf;
+    // Christmas tree on the plaza (Advent), the snowman on the lawn next to it (winter)
+    map.xmasTree = dp && map.freeSpot(dp.x, dp.z, 4, 30, 2.2, (x, z) => !map.fieldAt(x, z));
+    if (map.xmasTree && NB.cal && NB.cal.advent) blockDisc(map.xmasTree.x, map.xmasTree.z, 1.4);
+    const st = map.start;
+    map.snowman = map.freeSpot(st.x + 12, st.z + 8, 4, 50, 3, (x, z) => !map.fieldAt(x, z) && (!map.xmasTree || Math.hypot(x - map.xmasTree.x, z - map.xmasTree.z) > 6) && (!map.fest || Math.hypot(x - map.fest.lot.x, z - map.fest.lot.z) > 12));
+    if (map.snowman) map.spots = Object.assign(map.spots || {}, { schneemaa: [0, 2.1, 4.2].map((a) => ({ x: map.snowman.x + Math.cos(a) * 1.4, z: map.snowman.z + Math.sin(a) * 1.4, face: Math.atan2(-Math.cos(a), -Math.sin(a)), sit: false })) });
+    if (map.snowman) map.pois.schneemaa = [map.snowman.x - 2, map.snowman.z - 2, map.snowman.x + 2, map.snowman.z + 2];
+    // Easter eggs: one in the garden of each of the houses nearest the village centre, on the side facing the viewer
+    const houses = Object.values(map.buildings).filter((b) => b.kind === 'house').sort((p, q) => Math.hypot(p.cx - st.x, p.cz - st.z) - Math.hypot(q.cx - st.x, q.cz - st.z)).slice(0, 26);
+    const rnd = NB.seeded(2026);
+    map.eggSpots = [];
+    for (const b of houses) {
+      if (map.eggSpots.length >= 10) break;
+      const q = map.freeSpot(b.cx, b.cz, Math.max(b.w, b.d) / 2 + 2, Math.max(b.w, b.d) / 2 + 7, 0.8, (x, z) => !map.fieldAt(x, z) && NB.Iso.depth(x, z) > NB.Iso.depth(b.cx, b.cz) && rnd() < 0.5);
+      if (q && map.eggSpots.every((e) => Math.hypot(e.x - q.x, e.z - q.z) > 15)) map.eggSpots.push(Object.assign(q, { house: b.name }));
+    }
+    // cows on a meadow near the village (May to October), storks on a field (spring)
+    const fieldRect = (kinds, w, d) => {
+      for (let r = 60; r <= 400; r += 20) for (let a = 0; a < 6.28; a += 12 / r) {
+        const x = st.x + Math.cos(a) * r, z = st.z + Math.sin(a) * r, f = map.fieldAt(x, z);
+        if (!f || !kinds.includes(f.kind) || x < bx0 + 20 || x > bx1 - 20 || z < bz0 + 20 || z > bz1 - 20) continue;
+        const ok = [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2], [0, 0]].every(([u, v]) => { const f2 = map.fieldAt(x + u, z + v); return f2 === f && !map.inBuilding(x + u, z + v, 6) && map.streetDist(x + u, z + v) > 4; });
+        if (ok) return [x - w / 2, z - d / 2, x + w / 2, z + d / 2];
+      }
+      return null;
+    };
+    map.cowField = fieldRect(['meadow'], 34, 26);
+    map.storkField = fieldRect(['grain', 'root'], 40, 30);
+    const cal = NB.cal || {};
+    map.spots = map.spots || {};
+    // Silvester: everyone stands on the festival lawn, looking up
+    if (lot && (cal.silvester || cal.neujahr)) {
+      const ring = [];
+      for (const [r, n] of [[3, 7], [5.2, 11], [7.2, 14]]) for (let k = 0; k < n; k++) { const a = (k / n) * 6.28 + r, x = lot.x + Math.cos(a) * r, z = lot.z + Math.sin(a) * r; if (freeAt(x, z, 0.4)) ring.push({ x, z, face: Math.atan2(lot.x - x, lot.z - z) + Math.PI, sit: false }); }
+      map.spots.silvester = ring; map.pois.silvester = map.pois.fest;
+    }
+    // Dorfmärt: stands in a horseshoe round a Rösslispiel; buyers in front of the stands, Reto and the Hirschbuur behind theirs
+    if (lot && cal.maert) {
+      const toDp = map.fest.heading, STANDS = [
+        { id: 'chaes', name: 'Chässtand vo de Gehrigs', awning: '#e8c23a', goods: ['#f2d36a', '#e8b84a', '#f6e6a0'], lines: ['Nesselnbacher Bergchäs – en Mocke?', 'Früsch vo de Milchzentrale. 🧀', 'Raclette, Tilsiter, Mutschli.'] },
+        { id: 'magebrot', name: 'Magebrot & Mandle', awning: '#d52b1e', goods: ['#8a4a2a', '#c8823a', '#a85a2a'], lines: ['Magebrot! 100 Gramm 3 Franke. 🍪', 'Brönnti Mandle, no warm.', 'Lebchueche mit Herz.'] },
+        { id: 'gmues', name: 'Gmües vom Hirschbuur', awning: '#3f8a3a', goods: ['#ff8a2a', '#e05a3a', '#7aba4a'], lines: ['Kürbis, Rüebli, Öpfel – alles vo do. 🎃', 'De Hirschbuur het au Hirschwurscht.', 'Biozertifiziert? Nei. Aber guet!'] },
+        { id: 'glace', name: 'Glace & Sirup', awning: '#ff8ab0', goods: ['#ffd0e0', '#a0d8ff', '#fff2b0'], lines: ['Erdbeeri oder Vanille? 🍦', 'Himbeersirup für d\'Chind.', 'Es Glace, bitte!'] },
+        { id: 'basteln', name: 'Basar vom Fraueverein', awning: '#4f7aff', goods: ['#b06aff', '#ffd23f', '#5bd06a'], lines: ['Gstrickti Socke und Topflappe.', 'Alles für en guete Zweck. 💛', 'Konfi us em eigete Garte.'] },
+      ];
+      map.maert = { carousel: { x: lot.x, z: lot.z }, stands: [] };
+      STANDS.forEach((st, i) => {
+        const a = toDp + Math.PI / 2 + (i / (STANDS.length - 1)) * Math.PI, x = lot.x + Math.sin(a) * 6.6, z = lot.z + Math.cos(a) * 6.6;
+        const face = Math.atan2(lot.x - x, lot.z - z), fx = Math.sin(face), fz = Math.cos(face);
+        map.maert.stands.push(Object.assign({ x, z, heading: face }, st));
+        blockDisc(x, z, 1.3);
+        (map.spots.maert = map.spots.maert || []).push(...[-0.8, 0.8].map((k) => ({ x: x + fx * 1.7 + fz * k, z: z + fz * 1.7 - fx * k, face: face + Math.PI, sit: false, stand: st.id })));
+        map.spots[st.id] = [{ x: x - fx * 1.75, z: z - fz * 1.75, face, sit: false }];
+      });
+      blockDisc(lot.x, lot.z, 2.6);
+      map.spots.rossli = Array.from({ length: 6 }, (_, k) => { const a = toDp + Math.PI + (k - 2.5) * 0.35; return { x: lot.x + Math.sin(a) * 3.6, z: lot.z + Math.cos(a) * 3.6, face: a + Math.PI, sit: false }; });
+      map.pois.maert = map.pois.fest;
+    }
+    // Samichlaus (5 / 6 December): where he stands in front of the neighbour child's house (Niederwilerstrasse 13)
+    const kidHome = map.buildings.haus10;
+    if (kidHome && cal.samichlaus) { // in the garden on the side we look at, so the visit isn't hidden behind the house
+      const b = kidHome, r = Math.max(b.w, b.d) / 2, dep = NB.Iso.depth(b.cx, b.cz), e = b.entryPt;
+      const tc = [Math.sin(NB.Iso.towardCamera), Math.cos(NB.Iso.towardCamera)];
+      const seen = (x, z) => { for (let t = 0.5; t <= 16; t += 0.75) if (map.inBuilding(x + tc[0] * t, z + tc[1] * t, 0.2)) return false; return true; }; // no house between it and us
+      const at = map.freeSpot(b.cx, b.cz, r + 2, r + 14, 1.2, (x, z) => NB.Iso.depth(x, z) > dep && !map.inBuilding(x, z, 2.5) && seen(x, z) && seen(x + 1.8, z) && seen(x - 1.8, z) && seen(x, z + 1.8) && seen(x, z - 1.8)) || { x: e.x + b.doorN[0] * 2.6, z: e.z + b.doorN[1] * 2.6 };
+      const side = [1, -1].map((k) => ({ x: at.x + tc[1] * 1.8 * k, z: at.z - tc[0] * 1.8 * k })); // left or right of him on screen
+      const kid = side.find((p) => !map.inBuilding(p.x, p.z, 1) && seen(p.x, p.z)) || side[0];
+      map.chlaus = { at, face: Math.atan2(kid.x - at.x, kid.z - at.z) };
+      map.spots.chlaus = [{ x: kid.x, z: kid.z, face: Math.atan2(at.x - kid.x, at.z - kid.z), sit: false }];
+      map.pois.chlaus = [kid.x - 1, kid.z - 1, kid.x + 1, kid.z + 1];
+    }
+  }
+
   map.randomIn = function (area, cost) {
     const a = typeof area === 'string' ? map.pois[area] : area;
     if (!a) return null;
@@ -458,4 +753,5 @@
     }
     return null;
   };
+  NB.worldMs = Math.round(performance.now() - tWorld);
 })(window.NB);

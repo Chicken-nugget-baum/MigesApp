@@ -27,7 +27,7 @@
       this.pts = laneOffset(base, 1.5);
       this.x = this.pts[0].x; this.z = this.pts[0].z; this.i = 1; this.heading = 0; this.life = 0;
       this.color = opts.color || NB.pick(type === 'tractor' ? TRACTOR_COLORS : CAR_COLORS); this.sprite = new PIXI.Sprite(); this.shown = null;
-      this.maxSpeed = type === 'bus' ? 7 : type === 'tractor' ? 4 : type === 'mini' ? 7 : type === 'tanker' ? 6 : type === 'firetruck' ? 15 : type === 'jeep' ? 6.5 : type === 'racer' ? 31 : NB.rr(8, 10);
+      this.maxSpeed = type === 'bus' ? 7 : type === 'tractor' ? 4 : type === 'mini' ? 7 : type === 'celica' ? 8.5 : type === 'tanker' ? 6 : type === 'firetruck' ? 15 : type === 'jeep' ? 6.5 : type === 'racer' ? 31 : NB.rr(8, 10);
       this.speed = this.maxSpeed; this.stopT = 0; this.done = false; this.putT = 0; this.pull = 0;
       this.name = opts.name || (type === 'bus' ? 'Postauto' : type === 'tractor' ? 'Traktor' : 'Auto');
       this.lines = opts.lines || null;
@@ -151,11 +151,17 @@
 
   // ---------------------------------------------------------------- tractor working a field
   // Drives a block of rows (map.fieldLanes) back and forth, kicks up dust, then fades out at the last row.
+  // vtype: 'tractor' (ploughing / sowing), 'mower' (haymaking in June), 'combine' (grain harvest in July)
+  const FIELD_LINES = {
+    mower: ['Heuet! 🌾 Wenn\'s schön isch, wird gmäiht.', 'Morn wird gwändet, denn pressed.', 'Schmöcksch s\'Heu?'],
+    combine: ['Mähdrescher! Ärnt isch! 🌾', 'S\'Chorn isch riif.', 'Hüt wird dröschet bis in d\'Nacht.', 'Achtung, Stroh!'],
+  };
   class FieldTractor {
-    constructor(field, lanes) {
-      this.kind = 'tractor'; this.type = 'tractor'; this.name = 'Traktor'; this.field = field;
+    constructor(field, lanes, vtype) {
+      this.vtype = vtype || 'tractor';
+      this.kind = 'tractor'; this.type = 'tractor'; this.name = { mower: 'Traktor mit Mäher', combine: 'Mähdrescher' }[this.vtype] || 'Traktor'; this.field = field;
       this.lanes = lanes; this.i = 0; this.leg = 'row'; this.target = lanes[0].b;
-      this.color = NB.pick(TRACTOR_COLORS); this.sprite = new PIXI.Sprite(); this.shown = null;
+      this.color = this.vtype === 'combine' ? '#3f8a3a' : NB.pick(TRACTOR_COLORS); this.sprite = new PIXI.Sprite(); this.shown = null;
       this.x = lanes[0].a.x; this.z = lanes[0].a.z; this.heading = Math.atan2(this.target.x - this.x, this.target.z - this.z);
       this.life = 0; this.fade = 1; this.done = false; this.leaving = false; this.dustT = 0; this.putT = NB.rr(0, 0.5); this.pauseT = 0;
     }
@@ -168,7 +174,7 @@
       }
       if (this.pauseT > 0) { this.pauseT -= dt; tractorNoise(this, dt, 0.8); return this.pose(dt); }
       const t = this.target, dx = t.x - this.x, dz = t.z - this.z, d = Math.hypot(dx, dz);
-      const speed = this.leg === 'row' ? 3.2 : 4.5;
+      const speed = (this.leg === 'row' ? 3.2 : 4.5) * (this.vtype === 'combine' ? 0.6 : 1);
       if (d > 0.01) this.heading = Math.atan2(dx, dz);
       const step = Math.min(d, speed * dt);
       if (d > 0) { this.x += (dx / d) * step; this.z += (dz / d) * step; }
@@ -182,23 +188,26 @@
       this.dustT -= dt;
       if (this.leg === 'row' && this.dustT <= 0 && NB.UI.onScreen(this)) {
         this.dustT = 0.16;
-        NB.UI.fx(this.x - Math.sin(this.heading) * 2 + NB.rr(-0.6, 0.6), 0.3, this.z - Math.cos(this.heading) * 2 + NB.rr(-0.6, 0.6), 'dust', { vy: 0.5, life: 1.0 });
+        const back = this.vtype === 'combine' ? 4 : 2;
+        NB.UI.fx(this.x - Math.sin(this.heading) * back + NB.rr(-0.6, 0.6), this.vtype === 'combine' ? 1.5 : 0.3, this.z - Math.cos(this.heading) * back + NB.rr(-0.6, 0.6), 'dust', { vy: 0.5, life: this.vtype === 'combine' ? 1.6 : 1.0 });
+        if (this.vtype === 'combine' && Math.random() < 0.5) NB.UI.fx(this.x - Math.sin(this.heading) * 3.5, 1.2, this.z - Math.cos(this.heading) * 3.5, 'confetti', { vy: -0.4, vx: NB.rr(-0.6, 0.6), life: 1.4, col: '#e8d080' });
       }
       tractorNoise(this, dt, this.leg === 'row' ? 0.9 : 1.05);
       this.pose(dt);
     }
     pose(dt) {
       this.shown = this.shown == null ? this.heading : angleLerp(this.shown, this.heading, Math.min(1, dt * 4));
-      place(this, NB.Models.vehicle('tractor', this.color, this.shown), this.x, 0, this.z);
+      place(this, NB.Models.vehicle(this.vtype, this.color, this.shown), this.x, 0, this.z);
       this.sprite.alpha = Math.min(1, this.life / 1.2, this.fade);
     }
     click() {
-      say(this, NB.pick(TRACTOR_LINES[NB.season] || TRACTOR_LINES.summer));
+      if (this.vtype === 'combine') NB.UI.discover('combine');
+      say(this, NB.pick(FIELD_LINES[this.vtype] || TRACTOR_LINES[NB.season] || TRACTOR_LINES.summer));
       NB.Audio.play('honkTractor', { pos: this, rate: 0.7 });
       this.pauseT = 2.5; // the farmer stops for a chat
     }
     get visible() { return true; }
-    top() { return { x: this.x, y: 2.9, z: this.z }; }
+    top() { return { x: this.x, y: this.vtype === 'combine' ? 4.2 : 2.9, z: this.z }; }
   }
   Object.assign(NB.Ent, { Vehicle, FieldTractor, laneOffset, nearestIdx });
 })(window.NB);
