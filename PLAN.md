@@ -99,18 +99,20 @@ A living isometric pixel-art version of **Nesselnbach** (Ortsteil of Niederwil A
 | `js/entities/vehicles.js` | done | `Vehicle` (Postauto, cars, Mini, tanker, fire engine, jeep, racer), `FieldTractor`, lanes |
 | `js/entities/animals.js` | done | `Cat` (idle/sit/sleep, purr, zoomies, rides dogs, Luna + Mina hunt mice and bring a `Mouse` to the Sitzplatz), `Dog` (follow, sniff/potter, play tag, Manolo runs off, Kuba on the leash), `Deer` (come to the rack at feeding time), `Duck` (`feed`), `Owl`, `Hedgehog`, `Fox`, `Grazer` (cows / storks) |
 | `js/entities/villagers.js` | done | `Villager`: routines, spots, visits, fishing, boule, garden, Gassirunde, worrying about / searching for a dog that ran off |
+| `js/entities/postman.js` | done | `Postman` (Beat, extends `Villager`): comes from Niederwil on his grey e-scooter for the morning round (Mon–Sat 09:10–11:50) and the parcels (Mon–Fri 14:20–16:10), not on Sundays/holidays; zig-zag order (often not the nearest house – that one he "forgets" and turns back for later), parks where the street ends, walks to the door, trips over his own feet (20 %), the wrong house now and then (scratches his head, fetches the letter, then the neighbour), letters fly out of the bag while riding (`Letter`, he runs after them), wobbles when Kuba barks. Click: a line (gossip / mishaps / cold) and a letter falls out; the 5th click in a row (counter resets when you click someone else, `NB.Ent.prevClicked`) hands over a `Parcel` once ever → 🎒 + discovery `paeckli` |
+| `js/entities/mige.js` | done | `Mige` (extends `Villager`): 08–12 home office (`homeoffice` seat at the Sitzplatz, typing frames + `M.laptop`; in rain/storm/snow inside, the Buurehuus windows glow blue: `b.laptop`), 12–17:30 a plan made once a day (`makePlan`: smoke breaks with the Iqos at `rauchpause`, baking Gagichueche / Zimtschnägge inside with steam from the chimney (`NB.chimneyOf`) and smell bubbles, 15 % burnt → black smoke, Essiggurken, a basket round to Karin and Monika (`deliver` mode, basket frames), waiting for Beat at `uf_beat` on weekday afternoons). Chaos: forgets her Iqos when she comes out (12 %) and runs back in; when Beat heads for the Buurehuus she drops everything and runs to the door (`beatComing` / `gotParcel`; Beat always has a parcel for her). Click: morning or afternoon lines; 5th click in a row: the meeting excuse (morning) or a treat once ever (Zimtschnägge / Gagichueche / Essiggurken → 🎒 + discovery `migeGift`). Hook for subclasses: `updateAct(dt, g)` in `Villager.update`, `doingText()` for the card |
 | `js/entities/events.js` | done | fire + fire brigade (`Firefighter`), knocking at doors, `Visit`, `Outing` |
 | `js/entities/festivals.js` | done | `NB.Fest`: routine overrides (`goal`: evening at the festival tent, Sunday Zopf at Iris's, the snowman, the jeep), costumes at Fasnacht, fireworks + 1.-August bonfire, the Guggenmusik band (`Gugge`), Easter eggs (`Egg`), Kürbismarkt shoppers (`Shopper`), André warming up the jeep at 7, the deer farmer's feeding tractor, the news log Karin gossips about (`news` / `gossip`); `Walker` columns (Gugge, Räbeliechtli, Samichlaus), Silvester, Dorfmärt, Gmeiversammlig, fondue (`warm`, `buildingLine`) |
 | `js/settings.js` | done | `NB.Settings`: the ⚙️ panel – time (pause, speed, slider, now), festival days, weather, volume per channel |
 | `js/games.js` | done | `NB.Games`: «Wo isch…?» search game (🔍, arrow hint after 25 s, best time saved), feeding the ducks (tap the pond), boule duel against André (tap the Boule-Bahn, then the court), one quest a day (giver → item → recipient, HUD line) |
 | `js/entities.js` | done | spawns everything and runs the update loop: traffic, racer, field tractors (`NB.Entities`) |
-| `js/ui.js` | done | 2D overlay: speech bubbles, hover name tag, street labels, hearts/notes/dust, leashes; HUD (clock, zoom, centre, mute, ✨ discoveries), intro "Iitrete"; **character card** (`showCard`: home, live activity, `rel` / `about` / `from`, housemates, dogs); **discoveries** (`NB.UI.discover(id)`, 40 secrets, toast, list with hints); `NB.UI.store` (localStorage: camera, discoveries; mute in audio.js) |
+| `js/ui.js` | done | 2D overlay: speech bubbles, hover name tag, street labels, hearts/notes/dust, leashes; HUD (clock, zoom, centre, mute, ✨ discoveries), intro "Iitrete"; **character card** (`showCard`: home, live activity, `rel` / `about` / `from`, housemates, dogs); **discoveries** (`NB.UI.discover(id)`, 42 secrets, toast, list with hints); **backpack** 🎒 (`NB.UI.give(item)`, `NB.UI.has(id)`, saved as `nb-inv`); `NB.UI.store` (localStorage: camera, discoveries; mute in audio.js) |
 | `js/data/characters.js` | **placeholders** | family + villagers as data (see format below) |
 | `js/data/animals.js` | done | ducks on the Löli-Weiher; cats: Mimi, Tiger, Schnurrli, Fleckli, Minka, plus **Luna** (calico, only says Miau/Mauz: `words`) and **Mina** (calico, mostly white, talks: `talk`), both at the Buurehuus (POI `hof`) |
 | `js/main.js` | done | PixiJS renderer: building depth order + `NB.world.zkey`, lazy ground chunks, houses + window-light sprites, trees/bushes, lamps + glow, shelters, tables, day/night + weather layers, camera (drag, wheel/pinch zoom, follow cat), pixel-perfect picking on sprite masks, click/hover/long-press, game loop |
 | `index.html`, `css/style.css` | done | page shell, two canvases, HUD pills, intro card |
 
-Script order (all `defer`; an inline script before them drives the loading bar, `NB.onReady()` from main.js unlocks «Iitrete»): pixi, zzfx, util, path, data/scene, iso, world, models, audio, env, entities/core, entities/vehicles, entities/animals, entities/villagers, entities/events, entities/festivals, entities, ui, games, data/characters, data/animals, main.
+Script order (all `defer`; an inline script before them drives the loading bar, `NB.onReady()` from main.js unlocks «Iitrete»): pixi, zzfx, util, path, data/scene, iso, world, models, audio, env, entities/core, entities/vehicles, entities/animals, entities/villagers, entities/postman, entities/mige, entities/events, entities/festivals, entities, ui, games, data/characters, data/animals, main.
 
 ## Character data format
 ```js
@@ -118,7 +120,10 @@ Script order (all `defer`; an inline script before them drives the loading bar, 
   id: 'regina', name: 'Regina', home: 'h25',
   look: { skin: '#f1c7a0', hair: '#cdb89a', hairStyle: 'short', shirt: '#b98bb0', pants: '#4a4a5a', earrings: true },
   // hairStyle: short | long | bun | ponytail | spiky | bald | cap | straw | headscarf; extras: glasses, beard, dress, apron, cap, scarf,
-  // flower (hex: flower in the hair), earrings (true: gold hoops), bands ([hex, hex]: embroidered bands across the top)
+  // flower (hex: flower in the hair), earrings (true: gold hoops), bands ([hex, hex]: embroidered bands across the top),
+  // messy (strands under the cap), round (belly), bag (mailbag + strap), clumsy (extra frames: stumble, scratch)
+  // postman: true -> js/entities/postman.js (with visitor: true, from: 'Niederwil'); mige: true -> js/entities/mige.js
+  // (routine do: 'office' / 'free', morningLines / afternoonLines); iqos (the device in her hand + typing / smoke frames)
   voice: 1.4,                       // babble pitch
   favorites: ['dorfplatz', 'kapelle'],
   routine: [{ at: '08:00', go: 'dorfplatz' }, { at: '12:00', go: 'home:h25' }], // optional do: 'fish' at the fischerplatz
@@ -134,8 +139,9 @@ POIs: `dorfplatz, bushalt, unterdorf, kapelle, beiz, hof, sitzplatz, feld, weide
 1. ~~2D pixel version~~ → ~~low-poly 3D~~ → isometric pixel art (screenshots checked: day, dusk, night, rain, fog, winter snow, overview, chapel, Beiz, Postauto; clicks on villagers and houses verified headless).
 1b. Polish ideas: more ground detail (flower beds, gravel at the chapel, hedges), vehicle headlight glow at night, 8-direction villager sprites, an optional 0.5x overview zoom (needs a smoothed downscale), rotate-by-90° views (would need re-rendered building sprites).
 2. Test in a real browser: clicking people, cats (long-press purr, Luna zoomies), houses, chapel bell, Postauto; tune sounds by ear.
-3. The invented family members (Grosi, Grospi, Mami, Papi, Gotti, Götti) are removed; the remaining unnamed villagers (De Buur, D'Wirtin, De Pöschtler, D'Nochberi, De Fischer, S'Nochberschind, De Hirschbuur) are stand-ins until real names are known.
-4. Publish: GitHub Pages needs a **public** repo (or a paid plan for private Pages).
+3. The invented family members (Grosi, Grospi, Mami, Papi, Gotti, Götti) are removed; the remaining unnamed villagers (De Buur, D'Wirtin, D'Nochberi, De Fischer, S'Nochberschind, De Hirschbuur) are stand-ins until real names are known.
+4. Mige's garden next to the Buurehuus (sometimes messy) – to add later; then she works in it now and then.
+5. Publish: GitHub Pages needs a **public** repo (or a paid plan for private Pages).
 
 ## Setup on a new computer
 - `git clone https://github.com/Chicken-nugget-baum/MigesApp.git`

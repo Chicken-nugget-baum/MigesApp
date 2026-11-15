@@ -764,8 +764,9 @@
     fog.alpha = w === 'fog' ? 0.5 : 0;
     for (const h of houses) if (h.light) {
       const warm = NB.Fest.warm(h.b) && h.b.inside.size; // a fondue evening: every window lit, warmer
-      h.light.alpha = warm || NB.Env.windowLit(h.b, h.seed) ? NB.clamp(d * 1.6, 0, 1) : 0;
-      h.light.tint = warm ? 0xffb070 : 0xffffff;
+      h.light.alpha = h.b.laptop ? 1 : warm || NB.Env.windowLit(h.b, h.seed) ? NB.clamp(d * 1.6, 0, 1) : 0; // Mige's home office: blue laptop glow
+      h.light.tint = h.b.laptop ? 0x5aa8ff : warm ? 0xffb070 : 0xffffff;
+      h.light.blendMode = h.b.laptop && d < 0.5 ? 'add' : 'normal'; // by day: added on top of the glass so it reads blue
     }
     const on = d > 0.25;
     for (const l of lamps) { l.head.alpha = on ? 1 : 0; l.glow.alpha = on ? NB.clamp(d, 0, 1) * 0.7 : 0; }
@@ -876,7 +877,7 @@
     const h = pick(sx, sy);
     if (NB.Games.tap(h, groundAt(sx, sy))) { if (h && h.entity) { follow = h.entity; NB.UI.showCard(h.entity); } return; } // games / quest first
     if (!h) { follow = null; NB.UI.showCard(null); return; } // a tap on empty ground lets go
-    if (h.entity) { h.entity.click(); follow = h.entity; NB.UI.showCard(h.entity); } // the camera follows, the card shows who it is
+    if (h.entity) { NB.Ent.prevClicked = NB.Ent.lastClicked; NB.Ent.lastClicked = h.entity; h.entity.click(); follow = h.entity; NB.UI.showCard(h.entity); } // the camera follows, the card shows who it is
     else if (h.building) clickBuilding(h.building);
     else if (h.info) { const n = clickCount.get(h.info) || 0; clickCount.set(h.info, n + 1); NB.UI.say(h.info.top, h.info.lines[n % h.info.lines.length]); if (h.info.sound === 'bell') NB.Audio.bell({ pos: h.info.top, vol: 0.4, rate: 1.6 }); else NB.Audio.play(h.info.sound, { pos: h.info.top }); if (h.info.discover) NB.UI.discover(h.info.discover); }
   }
@@ -950,7 +951,7 @@
     if (!follow) return;
     if (follow.done) { follow = null; return; }
     if (follow.away && follow.kind === 'villager') { // gone off in a car: keep watching the car
-      const t = NB.Entities.visits.concat(NB.Entities.outings).find((v) => (v.members || (v.trip && v.trip.members.map((id) => NB.Entities.list.find((e) => e.c && e.c.id === id))) || []).includes(follow)), car = t && (t.car || t.cruiser);
+      const t = NB.Entities.visits.concat(NB.Entities.outings).find((v) => (Array.isArray(v.members) ? v.members : v.trip ? v.members(v.trip) : []).includes(follow)), car = t && (t.car || t.cruiser);
       if (!car || car.done) return;
       const p = I.project(car.x, 0, car.z), k = Math.min(1, dt * 3); cam.px += (p[0] - cam.px) * k; cam.py += (p[1] - cam.py) * k; return;
     }
@@ -958,6 +959,8 @@
     cam.px += (p[0] - cam.px) * k; cam.py += (p[1] - cam.py) * k;
   }
 
+  // where smoke leaves a house (its chimney, else the top of the roof) - for Mige's baking
+  NB.chimneyOf = (b) => { const h = houses.find((q) => q.b === b), c = h && h.rec.chimney; return c ? { x: b.cx + c[0], y: c[2], z: b.cz + c[1] } : { x: b.top.x, y: b.top.y - 1, z: b.top.z }; };
   // ---------- Milchzentrale: steam from the chimney while the cheese is being made ----------
   const dairy = houses.find((h) => h.b.kind === 'dairy' && h.rec.steam);
   let steamT = 0;

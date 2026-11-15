@@ -57,15 +57,17 @@ NB.Data.characters = [
   // ---------------- family ----------------
   // Mige: pink long hair, black shirt, jeans. Lives in the Buurehuus (Niederwilerstrasse 3) with Mina and Luna.
   {
-    id: 'mige', name: 'Mige', home: 'buurehuus', cycle: true, rel: 'Mina und Luna sind ihri Chatze', about: 'Pinki Hoor. Vibe-codet mit em Joel.',
-    look: { skin: '#f1c7a0', hair: '#ff7ac8', hairStyle: 'long', shirt: '#1f1d22', pants: '#3f68a8', shoes: '#f4f1ea' },
-    voice: 1.3, favorites: ['sitzplatz', 'hof', 'dorfplatz'],
-    routine: [{ at: '07:30', go: 'hof' }, { at: '08:30', go: 'home:buurehuus' }, { at: '12:00', go: 'sitzplatz' }, { at: '13:00', go: 'home:buurehuus' }, { at: '17:30', go: 'dorfplatz' }, { at: '18:30', go: 'hof' }, { at: '19:15', go: 'sitzplatz' }, { at: '21:00', go: 'home:buurehuus' }],
+    id: 'mige', name: 'Mige', home: 'buurehuus', mige: true, rel: 'Mina und Luna sind ihri Chatze',
+    about: 'Chaotisch, aber härzig – kreativ und voller Ideä. Am Morge schaffet si hert, am Namittag backt si mit Liebi.',
+    look: { skin: '#f1c7a0', hair: '#ff5ab8', hairStyle: 'long', shirt: '#1f1d22', pants: '#3f68a8', shoes: '#f8f6f0', iqos: true },
+    voice: 1.3, favorites: ['sitzplatz', 'hof'],
+    // 08-12 home office (js/entities/mige.js: outside at the Sitzplatz, inside when it rains), from 12 free time (her own plan)
+    routine: [{ at: '07:30', go: 'hof' }, { at: '08:00', go: 'homeoffice', do: 'office' }, { at: '12:00', go: 'home:buurehuus', do: 'free' }, { at: '17:30', go: 'dorfplatz' }, { at: '18:30', go: 'hof' }, { at: '19:15', go: 'sitzplatz' }, { at: '21:00', go: 'home:buurehuus' }],
     sleep: ['23:30', '07:00'],
-    clicks: ['Mina, Luna, ÄSSE!', 'Shiiit, es lauft so viel im Gschäft.', 'Joel, hesch bock zum Vibe Code?'],
-    random: ['Mina, Luna, ÄSSE!', 'Shiiit, es lauft so viel im Gschäft.', 'Joel, hesch bock zum Vibe Code?'],
-    night: ['Joel, hesch bock zum Vibe Code?', 'Mina, Luna, ÄSSE!'],
+    morningLines: ['Shit, lies doch die Nachricht richtig.', 'Scho weder es Meeting!', 'No eis Excel... ich cha nüm.', 'Wär het die Mail ohni Aahang gschickt?!', 'Du bisch stumm gschaltet!', 'Piff Paff am Nüni!'],
+    afternoonLines: ['Wotsch es Stück Gagichueche?', 'Isch de Beat scho do gsi?', 'Gits en Zigi?'],
   },
+
   // Joel: brown short hair, black glasses, white pullover, dark jeans. Lives in Lenzburg with Mariana; the two
   // visit regularly by electric Mini (NB.Data.visitors below) and park at Mige's (`home` = their base while here).
   // Dry, short sentences, half his mind on code (vibe coding), coffee by day, beer at the Beiz, soft spot for Luna.
@@ -367,14 +369,14 @@ NB.Data.characters = [
     random: ['De Stammtisch isch wider voll.', 'Wer het s\'Bier bstellt?'],
     night: ['Polizeistund, zäme!'],
   },
+  // Beat, the postman from the Post in Niederwil (js/entities/postman.js): yellow cap with messy hair, yellow uniform,
+  // a big mailbag, a small grey e-scooter. Clumsy, always in a hurry, reads the postcards. Comes for the morning round
+  // (and the parcels in the afternoon), rides off again when he's done.
   {
-    id: 'poeschtler', name: 'De Pöschtler', home: 'haus12',
-    look: { skin: '#e8b890', hair: '#5a3a22', hairStyle: 'cap', cap: '#ffcc00', shirt: '#ffcc00', pants: '#2a2a3a' },
-    voice: 1.0, favorites: ['quartier', 'dorfplatz', 'niederwil'],
-    routine: [{ at: '08:00', go: 'quartier' }, { at: '10:00', go: 'niederwil' }, { at: '12:00', go: 'home:haus12' }, { at: '13:30', go: 'quartier' }, { at: '16:00', go: 'home:haus12' }],
-    sleep: ['22:00', '06:00'],
-    clicks: ['Poscht isch do!', 'Es Päckli für di!', 'Wieder kei Brief für di, sorry.', 'Ich ha\'s pressant!'],
-    random: ['De Hund vo Huus 5 bällt immer.', 'So vill Päckli hüt!'],
+    id: 'beat', name: 'Beat', postman: true, visitor: true, from: 'Niederwil', home: 'haus12',
+    about: 'De Pöschtler. Tollpatschig, immer pressant, nie pünktlich – und er liest d\'Postcharte. 🙈',
+    look: { clumsy: true, round: true, messy: true, bag: true, skin: '#eab48e', hair: '#6a4a2a', hairStyle: 'cap', cap: '#ffcc00', shirt: '#ffcc00', pants: '#2a2a3a', shoes: '#111114' },
+    voice: 0.95, favorites: [], routine: [],
   },
   {
     id: 'nochberi', name: 'D\'Nochberi', home: 'haus5',

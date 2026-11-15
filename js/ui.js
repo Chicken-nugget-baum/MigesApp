@@ -304,6 +304,8 @@
     { id: 'maert', name: 'Dorfmärt mit Rösslispiel', icon: '🎠', hint: 'Im September, es Wuchenänd lang.' },
     { id: 'gmv', name: 'Gmeiversammlig', icon: '🗳️', hint: 'Im Juni und im November, am Friitig im Casino.' },
     { id: 'fondue', name: 'Fondue-Plausch', icon: '🫕', hint: 'Im Winter am Abig: wo isch s\'Fänschter so warm?' },
+    { id: 'migeGift', name: 'Öppis Feins vo de Mige', icon: '🧺', hint: 'D\'Mige verschänkt am Namittag gärn öppis – wenn mer hartnäckig isch.' },
+    { id: 'paeckli', name: 'S\'Päckli vom Beat', icon: '📦', hint: 'De Pöschtler Beat het no öppis im Sack… lass ihn nöd in Rueh.' },
   ];
   const found = new Set(store.get('found', []));
   let toastT = 0;
@@ -325,6 +327,21 @@
     NB.Audio.play('pop', { vol: 0.5 });
   };
 
+  // ---------- the backpack: things people gave you (saved between visits) ----------
+  const inv = store.get('inv', []);
+  function renderInv() {
+    const btn = document.getElementById('invbtn'); if (btn) btn.textContent = inv.length ? '🎒 ' + inv.length : '🎒';
+    const list = document.getElementById('invlist'); if (!list) return;
+    list.innerHTML = inv.length ? inv.map((it) => `<li><span>${it.icon}</span><div><b>${it.name}</b>${it.about ? '<br><small>' + it.about + '</small>' : ''}</div></li>`).join('') : '<li class="locked">No nüt drin. Vilicht git dir öpper im Dorf emol öppis…</li>';
+  }
+  U.has = (id) => inv.some((it) => it.id === id);
+  U.give = function (item) {
+    if (U.has(item.id)) return;
+    inv.push(item); store.set('inv', inv); renderInv();
+    toast(`🎒 ${item.icon} ${item.name} – i dim Rucksack!`);
+    const b = document.getElementById('invbtn'); if (b) { b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
+  };
+
   // ---------- character card: who it is, where they live, what they're doing right now, who they belong to ----------
   const PLACES = {
     sitzplatz: 'am Sitzplatz vor em Buurehuus', hof: 'uf em Hof', dorfplatz: 'uf em Dorfplatz', beiz: 'im Casino', casino: 'im Casino', terrasse: 'uf de Terrasse',
@@ -333,6 +350,7 @@
     weide: 'uf de Weid', milchzentrale: 'bi de Milchzentrale', ifangweg: 'am Ifangweg', kapellenweg: 'am Kapälleweg', niederwilerstrasse: 'a de Niederwilerstrass',
     terrasse17: 'uf em Sitzplatz am Ifangweg 17', garte17: 'im Garte am Ifangweg 17', fuessball: 'am Tschutte im Garte ⚽', boulebank: 'uf em Bänkli bi de Kochs', hortensien: 'bi de Hortensie vo de Monika',
     aussicht: 'bim Bänkli mit Uussicht 🌄', feldwaeg: 'uf em Spaziergang am Schänisweg 🚶', grasweg: 'uf em Graswägli 🚶', nesselnbacherstrasse: 'a de Nesselnbacherstrass', schaenisweg: 'am Schänisweg',
+    homeoffice: 'im Homeoffice uf em Sitzplatz 💻', rauchpause: 'vor em Huus (Rauchpause) 💨', uf_beat: 'vor em Huus, wartet uf de Beat 📦',
     fest: 'am Dorffest', silvester: 'am Silvester uf de Feschtwiese 🎆', maert: 'am Dorfmärt', rossli: 'bim Rösslispiel 🎠', chaes: 'am Chässtand', gmues: 'am Gmüesstand',
     chlaus: 'bim Samichlaus 🎅', schneemaa: 'bim Schneemaa', jeep: 'bim Jeep',
     unterdorf: 'im Unterdorf', reuss: 'a de Reuss', wald: 'im Wald', gartebahn: 'bi de Gartebahn vom Ernst', iisebahn: 'bi sinere Gartebahn', niederwil: 'z Niederwil', gnadenthal: 'im Gnadenthal', tankstelle: 'a de Tankstell',
@@ -348,7 +366,10 @@
     const asleep = e.c && e.c.sleep && NB.inWindow(NB.clock.minutes(), e.c.sleep[0], e.c.sleep[1]);
     switch (e.kind) {
       case 'villager':
+        if (e.away && e.c.postman) return 'uf de Poscht z Niederwil';
         if (e.away) return e.c.from ? 'z ' + e.c.from : 'nöd do';
+        if (e.doingText && !e.away) { const t = e.doingText(); if (t) return t; }
+        if (e.c.postman && !e.away) return { ride: e.leaving ? 'fahrt zrugg uf Niederwil 🛵' : e.house ? 'fahrt zum ' + (e.house.addr || e.house.name) + ' 🛵' : 'fahrt umenand 🛵', walk: 'bringt d\'Poscht a d\'Tür ✉️', trip: 'stolperet! 😵', deliver: 'wirft d\'Poscht ii ✉️', oops: 'merkt, dass es s\'falsche Huus isch 🤔', fetch: 'holt de Brief zrugg 🙈', back: 'gaht zrugg zum Roller', chase: 'rennt sim Brief noche! 💨' }[e.state] || 'verteilt d\'Poscht';
         if (e.toCar) return e.waitForBus ? 'wartet uf s\'Postauto' : 'gaht hei';
         if (e.searching) return 'suecht de ' + e.searching.name + '! 😟';
         if (e.inside) { const b = e.inBuilding || e.home; return asleep ? 'schloft 💤' : b === e.home ? 'dihei' : 'bi ' + b.name; }
@@ -376,6 +397,7 @@
       case 'deer': return { graze: 'frisst Gras', lie: 'liit im Gras', walk: 'spaziert', stand: 'luegt umenand' }[e.state] || 'im Gehege';
       case 'duck': return e.state === 'dip' ? 'tunkt ab 🦆' : 'schwümmt';
       case 'firefighter': return e.spray ? 'löscht! 💦' : 'im Iisatz';
+      case 'letter': return e.y > 0 ? 'flüügt devo! 💨' : 'liit am Bode';
       case 'train': return e.train.v > 0.05 ? 'fahrt im Kreis 🚂' : 'staht im Bahnhof';
       case 'gugge': return 'schränzt dur s\'Dorf 🎺';
       case 'raebeli': return 'am Räbeliechtli-Umzug 🏮';
@@ -384,13 +406,14 @@
       default: return e.moving === false || e.parked ? 'parkiert' : 'fahrt';
     }
   }
-  const ICON = { villager: '🧑', dog: '🐕', cat: '🐈', deer: '🦌', duck: '🦆', firefighter: '🚒', vehicle: '🚗', tractor: '🚜', gugge: '🎺', raebeli: '🏮', chlaus: '🎅', shopper: '🛍️', train: '🚂' };
+  const ICON = { villager: '🧑', dog: '🐕', cat: '🐈', deer: '🦌', duck: '🦆', firefighter: '🚒', vehicle: '🚗', tractor: '🚜', gugge: '🎺', raebeli: '🏮', chlaus: '🎅', shopper: '🛍️', train: '🚂', letter: '✉️' };
   function cardHtml(e) {
     const L = NB.Entities.list, rows = [];
     const add = (k, v) => v && rows.push(`<div class="row"><span>${k}</span><b>${v}</b></div>`);
     if (e.kind === 'villager') {
       const c = e.c;
-      add('🏠', c.visitor ? (c.from ? 'wohnt z ' + c.from : 'Bsuech') + (e.home ? ' · parkiert bim ' + e.home.name : '') : e.home && 'wohnt ' + (e.home.addr ? 'a de ' + e.home.addr : 'im ' + e.home.name));
+      if (c.postman) add('📮', 'Pöschtler vo de Poscht ' + c.from + (e.away ? '' : ' · uf sinere Tour'));
+      else add('🏠', c.visitor ? (c.from ? 'wohnt z ' + c.from : 'Bsuech') + (e.home ? ' · parkiert bim ' + e.home.name : '') : e.home && 'wohnt ' + (e.home.addr ? 'a de ' + e.home.addr : 'im ' + e.home.name));
       add('👀', doing(e));
       if (c.rel) add('💛', c.rel);
       const named = (ids) => ids.map((id) => (L.find((v) => v.c && v.c.id === id) || { name: id }).name).join(' und ');
@@ -435,7 +458,12 @@
     const fp = document.getElementById('found');
     document.getElementById('discover').addEventListener('click', () => { fp.classList.toggle('hidden'); document.getElementById('settings').classList.add('hidden'); });
     document.getElementById('foundclose').addEventListener('click', () => fp.classList.add('hidden'));
-    window.addEventListener('keydown', (e) => { if (e.key === 'Escape') { actions.unfollow(); fp.classList.add('hidden'); } });
+    const ip = document.getElementById('inv');
+    document.getElementById('invbtn').addEventListener('click', () => { ip.classList.toggle('hidden'); fp.classList.add('hidden'); document.getElementById('settings').classList.add('hidden'); });
+    document.getElementById('invclose').addEventListener('click', () => ip.classList.add('hidden'));
+    document.getElementById('discover').addEventListener('click', () => ip.classList.add('hidden'));
+    renderInv();
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape') { actions.unfollow(); fp.classList.add('hidden'); ip.classList.add('hidden'); } });
     renderFound();
     NB.Settings.init({ muteChanged: setMuteLabel });
     document.getElementById('findcat').addEventListener('click', () => { NB.Audio.unlock(); actions.findCat(); });

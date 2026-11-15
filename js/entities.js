@@ -44,7 +44,7 @@
   E.init = function () {
     (NB.Data.characters || []).forEach((c) => {
       if (!map.buildings[c.home]) { console.warn('unknown home', c.home, c.id); return; }
-      add(new Villager(c));
+      add(new (c.postman ? NB.Ent.Postman : c.mige ? NB.Ent.Mige : Villager)(c));
     });
     Object.values(map.buildings).forEach((b) => { if (b.occupants.length && b.kind === 'house') b.name = 'Huus vo ' + b.occupants.map((v) => v.name).join(' & ') + (b.addr ? ' (' + b.addr + ')' : ''); });
     (NB.Data.visitors || []).forEach((d, idx) => {
@@ -92,6 +92,7 @@
     for (const v of E.list) {
       if (v.kind !== 'villager' || v.away || v.toCar || v.searching) continue;
       if (v.inside) { (v.inBuilding || v.home).inside.delete(v); v.inside = false; v.inBuilding = null; }
+      if (v.mode) v.endMode();
       NB.Ent.releaseSpot(v); v.fishing = null; v.evading = null; v.pause = 0; v.appear();
     }
   };

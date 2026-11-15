@@ -877,6 +877,30 @@
     }
     // hoop earrings
     if (L.earrings) { if (isF) { setCh(rows, 7, 1, 'r'); setCh(rows, 7, 8, 'r'); } if (isS) setCh(rows, 7, 3, 'r'); }
+    // her Iqos in the right hand (I), and a wicker basket with something baked in it (B / C)
+    if (L.iqos && !L.basket) { if (isF) setCh(rows, 12, 9, 'I'); if (isS) setCh(rows, 13, 6, 'I'); if (isB) setCh(rows, 12, 0, 'I'); }
+    if (L.basket) {
+      if (isF) { setRow(rows, 13, rows[13].substring(0, 7) + 'BCB'); setRow(rows, 14, rows[14].substring(0, 7) + 'BBB'); }
+      if (isS) { setRow(rows, 13, rows[13].substring(0, 5) + 'BCB' + rows[13].substring(8)); setRow(rows, 14, rows[14].substring(0, 5) + 'BBB' + rows[14].substring(8)); }
+      if (isB) { setRow(rows, 13, 'BCB' + rows[13].substring(3)); setRow(rows, 14, 'BBB' + rows[14].substring(3)); }
+    }
+    // a few messy strands sticking out under the cap
+    if (L.messy) {
+      if (isF) { setCh(rows, 5, 0, 'h'); setCh(rows, 6, 9, 'h'); setCh(rows, 5, 9, 'h'); }
+      if (isB) { setCh(rows, 5, 0, 'h'); setCh(rows, 5, 9, 'h'); setCh(rows, 6, 0, 'h'); }
+      if (isS) { setCh(rows, 5, 1, 'h'); setCh(rows, 6, 1, 'h'); setCh(rows, 4, 1, 'h'); }
+    }
+    // a round belly
+    if (L.round) {
+      if (isS) { setRow(rows, 11, '..ttttttt.'); setRow(rows, 12, '..tttsttt.'); }
+      else { setRow(rows, 11, 'stttttttts'); setRow(rows, 12, '.tttttttt.'); }
+    }
+    // a big mailbag on the right hip, the strap across the chest (v = strap, b = bag, n = flap, W = letters)
+    if (L.bag) {
+      if (isF) { setCh(rows, 9, 2, 'v'); setCh(rows, 10, 3, 'v'); setCh(rows, 10, 4, 'v'); setCh(rows, 11, 5, 'v'); setCh(rows, 11, 6, 'v'); setRow(rows, 12, rows[12].substring(0, 7) + 'Wnn'); setRow(rows, 13, rows[13].substring(0, 7) + 'bbb'); setRow(rows, 14, rows[14].substring(0, 7) + 'bbb'); }
+      if (isB) { setCh(rows, 9, 7, 'v'); setCh(rows, 10, 6, 'v'); setCh(rows, 10, 5, 'v'); setCh(rows, 11, 4, 'v'); setCh(rows, 11, 3, 'v'); setRow(rows, 12, 'nnW' + rows[12].substring(3)); setRow(rows, 13, 'bbb' + rows[13].substring(3)); setRow(rows, 14, 'bbb' + rows[14].substring(3)); }
+      if (isS) { setCh(rows, 9, 4, 'v'); setCh(rows, 10, 4, 'v'); setCh(rows, 11, 3, 'v'); setRow(rows, 12, '.Wnn' + rows[12].substring(4)); setRow(rows, 13, '.bbb' + rows[13].substring(4)); setRow(rows, 14, '.bbb' + rows[14].substring(4)); }
+    }
     return rows;
   }
   M.person = function (L) {
@@ -884,7 +908,7 @@
     const colors = {
       h: L.hair, s: L.skin, e: '#2b2b3a', m: NB.shade(L.skin, 0.78), t: L.shirt, p: L.pants, f: L.shoes,
       g: '#1e1e28', c: L.cap || '#d94a4a', y: '#e8c860', a: L.apron || '#ffffff', d: L.dress || L.shirt, l: L.legs || L.skin, k: L.scarf || '#c0392b',
-      w: L.stripes || '#ffffff', q: L.mask || '#ffffff', x: (L.bands || [])[0] || '#ffd23f', z: (L.bands || [])[1] || '#2fbf71', o: L.flower || '#ff4f7a', r: '#f3c84a',
+      w: L.stripes || '#ffffff', q: L.mask || '#ffffff', v: '#3a2a1a', b: '#e8a800', n: '#b07a00', W: '#ffffff', I: '#e8eef4', B: '#b07a3a', C: L.basket || '#6a3a22', x: (L.bands || [])[0] || '#ffd23f', z: (L.bands || [])[1] || '#2fbf71', o: L.flower || '#ff4f7a', r: '#f3c84a',
     };
     const col = (ch) => colors[ch];
     const build = (base, view, legs, post) => {
@@ -901,7 +925,27 @@
       setCh(rows, top, 9, 's');
     };
     const side = LEGS.side.map((l) => build(SIDE, 'side', l));
+    // clumsy (Beat): stumbling with both arms flailing and the cap wobbling, and scratching his head
+    const flail = (up, cap) => (rows) => {
+      for (let y = 10; y <= 12; y++) rows[y] = rows[y].replace(/^\.s/, '..').replace(/s\.$/, '..'); // the hands go up
+      for (let y = 2; y <= 4; y++) rows[y] = cap > 0 ? '.' + rows[y].substring(0, 9) : rows[y].substring(1) + '.'; // the cap wobbles
+      for (let y = 0; y < rows.length; y++) rows[y] = '..' + rows[y] + '..'; // wider: arms out to the sides
+      const arm = (pts) => pts.forEach(([x, y], k) => setCh(rows, y, x, k === pts.length - 1 ? 's' : 't'));
+      arm(up ? [[2, 10], [1, 9], [1, 8], [0, 7], [0, 6]] : [[2, 10], [1, 10], [0, 9], [0, 8]]);
+      arm(up ? [[11, 10], [12, 10], [13, 9], [13, 8]] : [[11, 10], [12, 9], [12, 8], [13, 7], [13, 6]]);
+    };
+    const clumsy = L.clumsy ? {
+      stumble: [build(FRONT, 'front', LEGS.front[1], flail(true, 1)), build(FRONT, 'front', LEGS.front[2], flail(false, -1))],
+      scratch: [build(FRONT, 'front', LEGS.front[0], wave(3)), build(FRONT, 'front', LEGS.front[0], wave(4))],
+    } : {};
+    // Mige: typing on the laptop (seated, hands on the keys) and a smoking break (the Iqos at her mouth)
+    const sitDown = (rows) => { rows[13] = '..pppppp..'; rows[14] = '.pppppppp.'; rows[15] = '.ff....ff.'; rows[16] = '..........'; rows[17] = '..........'; };
+    const typing = (k) => (rows) => { sitDown(rows); setRow(rows, 12, '..tttttt..'); setCh(rows, 12, 2 + k, 's'); setCh(rows, 12, 7 - (1 - k), 's'); setCh(rows, 11, 0, '.'); setCh(rows, 11, 9, '.'); };
+    const puff = (rows) => { setCh(rows, 12, 8, 't'); setCh(rows, 12, 9, '.'); for (let y = 9; y <= 11; y++) setCh(rows, y, 9, 't'); setCh(rows, 8, 9, 's'); setCh(rows, 8, 8, 'I'); };
+    const office = L.iqos ? { type: [build(FRONT, 'front', LEGS.front[0], typing(0)), build(FRONT, 'front', LEGS.front[0], typing(1))], smoke: build(FRONT, 'front', LEGS.front[0], puff) } : {};
     return {
+      ...clumsy,
+      ...office,
       down: LEGS.front.map((l) => build(FRONT, 'front', l)),
       up: LEGS.front.map((l) => build(BACK, 'back', l)),
       right: side,
@@ -1248,6 +1292,61 @@
     }
     return treeCache[key];
   };
+  // ---------- Beat's small grey e-scooter (seat, front shield, yellow post box on the back), 16 headings ----------
+  M.scooter = function (heading) {
+    const b = ((Math.round(heading / (Math.PI / 8)) % 16) + 16) % 16, key = 'scoot' + b;
+    if (!treeCache[key]) {
+      const m = I.model((b * Math.PI) / 8), G = '#c8ccd2', D = '#8a8e96';
+      m.shadow(-0.25, -0.8, 0.5, 1.6, 0.8);
+      [0.55, -0.5].forEach((z) => m.cbox(0, z, 0, 0.12, 0.38, 0.38, '#2a2a2e'));
+      m.cbox(0, -0.3, 0.22, 0.42, 0.7, 0.3, G); // body under the seat
+      m.cbox(0, 0.22, 0.18, 0.36, 0.42, 0.08, D); // floorboard
+      m.cbox(0, 0.48, 0.2, 0.36, 0.12, 0.55, G); // front shield
+      m.cbox(0, 0.52, 0.75, 0.06, 0.06, 0.08, D, { noOutline: true });
+      m.cbox(0, 0.52, 0.83, 0.62, 0.07, 0.06, '#3a3a40'); // handlebar
+      m.cbox(0, 0.56, 0.58, 0.14, 0.04, 0.1, '#fff8c0', { noOutline: true, light: '#fff2a0' });
+      m.cbox(0, -0.25, 0.52, 0.34, 0.5, 0.08, '#2a2a30'); // seat
+      m.cbox(0, -0.72, 0.5, 0.38, 0.32, 0.3, '#ffcc00'); // the post box
+      m.cbox(0, -0.72, 0.6, 0.39, 0.33, 0.05, '#d52b1e', { noOutline: true });
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  // ---------- a letter (fluttering: tilted frames) and a parcel ----------
+  M.letter = function (tilt) {
+    const key = 'letter' + (tilt || 0);
+    if (!treeCache[key]) {
+      const rows = tilt === 1 ? ['..ww', '.wkw', 'wkww', 'ww..'] : tilt === 2 ? ['ww..', 'wkww', '.wkw', '..ww'] : ['wwwww', 'wkwkw', 'wwkww'];
+      treeCache[key] = SPR(rows, { w: '#fbf8f0', k: '#c9c2b2' }, { shadowW: 4, shadowH: 1 });
+    }
+    return treeCache[key];
+  };
+  // things Mige bakes / makes: a piece of Gagichueche, a Zimtschnägg, a jar of Essiggurken
+  M.treat = function (kind) {
+    const key = 'treat' + kind;
+    if (!treeCache[key]) {
+      const T = {
+        gagi: [['...dd', '.dddd', 'ddddd', 'ccccc', 'ddddd'], { d: '#4a2a1a', c: '#7a4a2a' }],
+        zimt: [['.bbb.', 'bcccb', 'bcbcb', 'bccbb', '.bbb.'], { b: '#c8884a', c: '#8a5a2a' }],
+        gurke: [['.lll.', 'ggggg', 'gkgkg', 'gkkgg', 'ggggg'], { l: '#d8b04a', g: '#cfe6dc', k: '#4a8a3a' }],
+      }[kind];
+      treeCache[key] = SPR(T[0], T[1], { shadowW: 5, shadowH: 1.2 });
+    }
+    return treeCache[key];
+  };
+  // a laptop on the table, the screen towards `heading` (glows blue)
+  M.laptop = function (heading) {
+    const b = ((Math.round(heading / (Math.PI / 8)) % 16) + 16) % 16, key = 'laptop' + b;
+    if (!treeCache[key]) {
+      const m = I.model((b * Math.PI) / 8);
+      m.cbox(0, 0.02, 0, 0.36, 0.24, 0.03, '#3a3a44'); // base
+      m.cbox(0, -0.1, 0.03, 0.36, 0.03, 0.24, '#55556a'); // lid
+      m.cbox(0, -0.08, 0.05, 0.3, 0.01, 0.19, '#7ac0ff', { noOutline: true, light: '#9ad0ff' }); // screen
+      treeCache[key] = m.render();
+    }
+    return treeCache[key];
+  };
+  M.parcel = () => treeCache.parcel || (treeCache.parcel = SPR(['bbtbbb', 'bbtbbb', 'ttttdt', 'bbtbbd', 'bbtbbd'], { b: '#c8955a', t: '#e8d8a0', d: '#9a6a3a' }, { shadowW: 6, shadowH: 1.4 }));
   // little buildings and trees between the tracks
   M.miniProp = function (kind, v) {
     const key = 'miniP' + kind + (v || 0);

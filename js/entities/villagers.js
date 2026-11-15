@@ -170,6 +170,7 @@
           this.updateFootball(dt);
         } else if (this.act === 'walk' && map.gassi) {
           this.updateWalk(dt);
+        } else if (this.updateAct && this.updateAct(dt, g)) { // acts of a subclass (Mige: office, smoke, waiting for Beat)
         } else if (g.place === 'fire' && this.spot) { // watching the fire: stand, face it, comment
           this.moving = false; this.heading = this.spot.face;
           this.chatCd -= dt;
